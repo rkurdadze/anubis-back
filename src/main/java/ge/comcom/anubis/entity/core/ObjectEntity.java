@@ -1,5 +1,7 @@
 package ge.comcom.anubis.entity.core;
 
+import ge.comcom.anubis.entity.security.Acl;
+import ge.comcom.anubis.entity.security.User;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Comment;
@@ -10,10 +12,18 @@ import java.util.List;
 
 /**
  * Represents a logical object in the repository.
- * Each object can have multiple versions and attached files.
+ * Matches PostgreSQL table: "object"
  */
 @Entity
-@Table(name = "object")
+@Table(
+        name = "\"object\"",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "object_object_type_id_class_id_name_key",
+                        columnNames = {"object_type_id", "class_id", "name"}
+                )
+        }
+)
 @Getter
 @Setter
 @Builder
@@ -23,34 +33,49 @@ public class ObjectEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Comment("Unique identifier of the object")
+    @Column(name = "object_id")
+    @Comment("Primary key of the object")
     private Long id;
 
-    @Column(nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "object_type_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "object_object_type_id_fkey"))
+    @Comment("Reference to object type")
+    private ObjectType objectType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "class_id",
+            foreignKey = @ForeignKey(name = "object_class_id_fkey"))
+    @Comment("Reference to object class")
+    private ObjectClass objectClass;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "acl_id",
+            foreignKey = @ForeignKey(name = "object_acl_id_fkey"))
+    @Comment("Reference to ACL defining access permissions")
+    private Acl acl;
+
+    @Column(name = "name", nullable = false)
     @Comment("Human-readable name of the object")
     private String name;
 
-    @Column(name = "type_id", nullable = false)
-    @Comment("Reference to object type (foreign key to object_type table)")
-    private Long typeId;
+    @Builder.Default
+    @Column(name = "is_deleted", nullable = false)
+    @Comment("Soft delete flag (TRUE means logically deleted)")
+    private Boolean isDeleted = false;
 
-    @Column(name = "created_by", nullable = false)
-    @Comment("Username or user ID who created the object")
-    private String createdBy;
+    @Column(name = "deleted_at")
+    @Comment("Timestamp when the object was deleted (if applicable)")
+    private Instant deletedAt;
 
-    @Column(name = "created_at", nullable = false)
-    @Comment("Timestamp when object was created")
-    private Instant createdAt;
-
-    @Column(name = "description")
-    @Comment("Optional description or notes about the object")
-    private String description;
-
-    @Column(name = "is_archived", nullable = false)
-    @Comment("Indicates whether the object is archived")
-    private Boolean isArchived = false;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "deleted_by",
+            foreignKey = @ForeignKey(name = "object_deleted_by_fkey"))
+    @Comment("User who performed deletion")
+    private User deletedBy;
 
     @OneToMany(mappedBy = "object", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @Comment("List of all versions belonging to this object")
+    @Comment("All versions of this object")
     private List<ObjectVersionEntity> versions = new ArrayList<>();
 }

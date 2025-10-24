@@ -3,7 +3,7 @@ package ge.comcom.anubis.service.meta;
 import ge.comcom.anubis.dto.meta.ValueListItemDto;
 import ge.comcom.anubis.entity.core.ValueList;
 import ge.comcom.anubis.entity.core.ValueListItem;
-import ge.comcom.anubis.repository.ValueListRepository;
+import ge.comcom.anubis.repository.meta.ValueListRepository;
 import ge.comcom.anubis.repository.meta.ValueListItemRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;

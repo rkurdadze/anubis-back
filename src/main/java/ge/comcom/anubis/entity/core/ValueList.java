@@ -4,6 +4,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Dictionary / picklist used by VALUELIST-type properties.
  */
@@ -29,4 +32,10 @@ public class ValueList {
     @Column(name = "name_i18n", columnDefinition = "jsonb")
     @Schema(description = "Localized name (JSON)", example = "{\"en\":\"Status\",\"ru\":\"Статус\"}")
     private String nameI18n;
+
+    @OneToMany(mappedBy = "valueList", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OrderBy("sortOrder ASC")
+    @Schema(description = "List of selectable items")
+    @Builder.Default
+    private List<ValueListItem> items = new ArrayList<>();
 }

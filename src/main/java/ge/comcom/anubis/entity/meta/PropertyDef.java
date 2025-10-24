@@ -2,7 +2,7 @@ package ge.comcom.anubis.entity.meta;
 
 import ge.comcom.anubis.entity.core.ObjectType;
 import ge.comcom.anubis.entity.core.ValueList;
-import ge.comcom.anubis.enums.DataType;
+import ge.comcom.anubis.enums.PropertyDataType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.*;
@@ -37,7 +37,7 @@ public class PropertyDef {
     @Enumerated(EnumType.STRING)
     @Column(name = "data_type", nullable = false)
     @Schema(description = "Data type: TEXT, NUMBER, DATE, BOOLEAN, LOOKUP, VALUELIST", example = "TEXT")
-    private DataType dataType;
+    private PropertyDataType dataType;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ref_object_type_id",

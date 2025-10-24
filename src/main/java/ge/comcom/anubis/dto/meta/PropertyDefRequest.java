@@ -1,6 +1,6 @@
 package ge.comcom.anubis.dto.meta;
 
-import ge.comcom.anubis.enums.DataType;
+import ge.comcom.anubis.enums.PropertyDataType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 import lombok.*;
@@ -21,7 +21,7 @@ public class PropertyDefRequest {
 
     @NotNull
     @Schema(description = "Data type (TEXT, NUMBER, DATE, BOOLEAN, LOOKUP, VALUELIST)", example = "VALUELIST")
-    private DataType dataType;
+    private PropertyDataType dataType;
 
     @Schema(description = "FK to object_type for LOOKUP type", example = "2")
     private Long refObjectTypeId;

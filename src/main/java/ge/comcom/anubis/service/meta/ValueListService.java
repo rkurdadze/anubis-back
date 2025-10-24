@@ -2,7 +2,7 @@ package ge.comcom.anubis.service.meta;
 
 import ge.comcom.anubis.dto.meta.ValueListDto;
 import ge.comcom.anubis.entity.core.ValueList;
-import ge.comcom.anubis.repository.ValueListRepository;
+import ge.comcom.anubis.repository.meta.ValueListRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;

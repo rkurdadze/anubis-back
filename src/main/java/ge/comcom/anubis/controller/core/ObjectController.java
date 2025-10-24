@@ -1,8 +1,8 @@
 package ge.comcom.anubis.controller.core;
 
 import ge.comcom.anubis.dto.ObjectDto;
-import ge.comcom.anubis.mapper.ObjectMapper;
 import ge.comcom.anubis.entity.core.ObjectEntity;
+import ge.comcom.anubis.mapper.ObjectMapper;
 import ge.comcom.anubis.service.core.ObjectService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,18 +15,19 @@ import java.util.List;
 
 /**
  * REST controller for managing repository objects.
+ * Supports CRUD operations and soft-deletion.
  */
 @RestController
 @RequestMapping("/api/v1/objects")
 @RequiredArgsConstructor
-@Tag(name = "Objects", description = "API for managing core repository objects")
+@Tag(name = "Objects", description = "API for managing logical repository objects")
 public class ObjectController {
 
     private final ObjectService objectService;
     private final ObjectMapper mapper;
 
     @GetMapping
-    @Operation(summary = "Get all active objects", description = "Returns all active (non-archived) objects")
+    @Operation(summary = "Get all active objects", description = "Returns all non-deleted objects")
     public List<ObjectDto> getAll() {
         return objectService.getAllActive().stream()
                 .map(mapper::toDto)
@@ -49,7 +50,7 @@ public class ObjectController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update object", description = "Updates the existing object entity by ID")
+    @Operation(summary = "Update object", description = "Updates an existing object entity by ID")
     public ObjectDto update(
             @Parameter(description = "Object ID", example = "1001") @PathVariable Long id,
             @RequestBody ObjectDto dto) {
@@ -59,10 +60,18 @@ public class ObjectController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Delete object", description = "Deletes an object entity by ID")
-    public ResponseEntity<Void> delete(
+    @Operation(summary = "Soft delete object", description = "Marks the object as deleted instead of physical removal")
+    public ResponseEntity<Void> softDelete(
             @Parameter(description = "Object ID", example = "1001") @PathVariable Long id) {
-        objectService.delete(id);
+        objectService.softDelete(id, null); // TODO: pass authenticated user later
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{id}/hard")
+    @Operation(summary = "Hard delete object", description = "Permanently removes the object from the database")
+    public ResponseEntity<Void> hardDelete(
+            @Parameter(description = "Object ID", example = "1001") @PathVariable Long id) {
+        objectService.hardDelete(id);
         return ResponseEntity.noContent().build();
     }
 }

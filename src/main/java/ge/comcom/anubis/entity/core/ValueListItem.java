@@ -1,72 +1,65 @@
 package ge.comcom.anubis.entity.core;
 
-import jakarta.persistence.*;
-
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * Single item within a ValueList.
- * Supports hierarchy (parent_item_id), ordering, and activity flag.
+ * Represents an item within a specific ValueList.
+ * Used by properties with VALUELIST or MULTI_VALUELIST types.
  */
 @Entity
 @Table(
         name = "value_list_item",
-        uniqueConstraints = @UniqueConstraint(
-                name = "value_list_id_value_text_key",
-                columnNames = {"value_list_id", "value_text"}
-        )
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "value_list_item_value_list_id_value_text_key",
+                        columnNames = {"value_list_id", "value_text"}
+                )
+        }
 )
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Value List Item (element within dictionary)")
+@Schema(description = "Single selectable item within a ValueList")
 public class ValueListItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "item_id")
-    @Schema(description = "Primary key", example = "101")
+    @Schema(description = "Primary key", example = "105")
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(
-            name = "value_list_id",
-            nullable = false,
-            foreignKey = @ForeignKey(name = "value_list_item_value_list_id_fkey")
-    )
-    @Schema(description = "Linked value list")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "value_list_id", nullable = false,
+            foreignKey = @ForeignKey(name = "value_list_item_value_list_id_fkey"))
+    @Schema(description = "Parent ValueList reference")
     private ValueList valueList;
 
     @Column(name = "value_text", nullable = false)
-    @Schema(description = "Display text", example = "Approved")
+    @Schema(description = "Display text of the item", example = "Approved")
     private String valueText;
 
     @Column(name = "value_text_i18n", columnDefinition = "jsonb")
-    @Schema(description = "Localized text (JSON)", example = "{\"en\":\"Approved\",\"ru\":\"Согласовано\"}")
+    @Schema(description = "Localized value (JSON)", example = "{\"en\":\"Approved\",\"ru\":\"Одобрено\"}")
     private String valueTextI18n;
 
     @Column(name = "sort_order")
-    @Schema(description = "Order number", example = "10")
+    @Schema(description = "Sorting order", example = "10")
     private Integer sortOrder;
 
-    @Builder.Default
-    @Column(name = "is_active", nullable = false)
-    @Schema(description = "TRUE=visible, FALSE=hidden", example = "true")
+    @Column(name = "is_active")
+    @Schema(description = "Active state flag", example = "true")
     private Boolean isActive = true;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "parent_item_id",
-            foreignKey = @ForeignKey(name = "value_list_item_parent_item_id_fkey")
-    )
-    @Schema(description = "Parent item (for hierarchical lists)")
+    @JoinColumn(name = "parent_item_id",
+            foreignKey = @ForeignKey(name = "value_list_item_parent_item_id_fkey"))
+    @Schema(description = "Optional parent item (for hierarchical lists)")
     private ValueListItem parentItem;
 
     @Column(name = "external_code")
-    @Schema(description = "Integration/external code", example = "APPROVED_200")
+    @Schema(description = "Integration or external system code", example = "APPROVED_200")
     private String externalCode;
 }
-

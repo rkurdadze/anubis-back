@@ -2,23 +2,41 @@ package ge.comcom.anubis.entity.security;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.Comment;
 
+/**
+ * Represents a system user.
+ * Matches table "user" in the database.
+ */
 @Entity
-@Table(name = "\"user\"")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Table(
+        name = "\"user\"",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "user_username_key", columnNames = {"username"})
+        }
+)
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "user_id")
+    @Comment("Primary key of the user")
     private Long id;
 
-    @Column(nullable = false, unique = true)
-    private String username; // e.g. "rkurdadze"
+    @Column(name = "username", nullable = false, unique = true)
+    @Comment("Unique login username")
+    private String username;
 
     @Column(name = "full_name")
-    private String fullName; // e.g. "Roman Kurdadze"
+    @Comment("Full display name of the user")
+    private String fullName;
 
     @Column(name = "password_hash")
-    private String passwordHash; // e.g. bcrypt hash or token
+    @Comment("Optional password hash (for non-SSO authentication)")
+    private String passwordHash;
 }

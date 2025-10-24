@@ -8,10 +8,7 @@ import java.util.List;
  * Repository interface for managing ObjectEntity records.
  */
 public interface ObjectRepository extends JpaRepository<ObjectEntity, Long> {
+    List<ObjectEntity> findByObjectType_Id(Long typeId);
 
-    List<ObjectEntity> findByNameContainingIgnoreCase(String name);
-
-    List<ObjectEntity> findByTypeId(Long typeId);
-
-    List<ObjectEntity> findByIsArchivedFalse();
+    List<ObjectEntity> findByIsDeletedFalse();
 }

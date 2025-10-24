@@ -1,4 +1,4 @@
-package ge.comcom.anubis.repository;
+package ge.comcom.anubis.repository.meta;
 
 import ge.comcom.anubis.entity.core.ValueList;
 import org.springframework.data.jpa.repository.JpaRepository;

@@ -1,6 +1,6 @@
 package ge.comcom.anubis.dto.meta;
 
-import ge.comcom.anubis.enums.DataType;
+import ge.comcom.anubis.enums.PropertyDataType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 
@@ -14,7 +14,7 @@ public class PropertyDefDto {
     private Long id;
     private String name;
     private String captionI18n;
-    private DataType dataType;
+    private PropertyDataType dataType;
     private Long refObjectTypeId;
     private Long valueListId;
     private Boolean isMultiselect;

@@ -5,7 +5,7 @@ import ge.comcom.anubis.dto.meta.PropertyDefRequest;
 import ge.comcom.anubis.entity.core.ObjectType;
 import ge.comcom.anubis.entity.core.ValueList;
 import ge.comcom.anubis.entity.meta.PropertyDef;
-import ge.comcom.anubis.repository.ValueListRepository;
+import ge.comcom.anubis.repository.meta.ValueListRepository;
 import ge.comcom.anubis.repository.core.ObjectTypeRepository;
 import ge.comcom.anubis.repository.meta.PropertyDefRepository;
 import jakarta.persistence.EntityNotFoundException;
