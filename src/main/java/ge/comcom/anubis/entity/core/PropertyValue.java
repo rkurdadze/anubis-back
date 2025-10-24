@@ -1,5 +1,6 @@
 package ge.comcom.anubis.entity.core;
 
+import ge.comcom.anubis.entity.meta.PropertyDef;
 import jakarta.persistence.*;
 import lombok.*;
 

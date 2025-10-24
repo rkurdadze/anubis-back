@@ -1,18 +1,32 @@
 package ge.comcom.anubis.entity.core;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.*;
 
+/**
+ * Dictionary / picklist used by VALUELIST-type properties.
+ */
 @Entity
 @Table(name = "value_list")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Schema(description = "Value List (dictionary of selectable items)")
 public class ValueList {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "value_list_id")
+    @Schema(description = "Primary key", example = "10")
     private Long id;
 
-    @Column(nullable = false)
-    private String name; // e.g. "Status List"
+    @Column(nullable = false, unique = true)
+    @Schema(description = "Internal technical name of the list", example = "DocumentStatus")
+    private String name;
+
+    @Column(name = "name_i18n", columnDefinition = "jsonb")
+    @Schema(description = "Localized name (JSON)", example = "{\"en\":\"Status\",\"ru\":\"Статус\"}")
+    private String nameI18n;
 }
