@@ -1,4 +1,4 @@
-package ge.comcom.anubis.dto.core;
+package ge.comcom.anubis.dto;
 
 import lombok.*;
 import java.time.LocalDateTime;

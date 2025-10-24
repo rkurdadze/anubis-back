@@ -1,7 +1,7 @@
 package ge.comcom.anubis.controller.core;
 
-import ge.comcom.anubis.dto.core.ObjectVersionDto;
-import ge.comcom.anubis.dto.mapper.ObjectVersionMapper;
+import ge.comcom.anubis.dto.ObjectVersionDto;
+import ge.comcom.anubis.mapper.ObjectVersionMapper;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.service.core.ObjectVersionService;
 import io.swagger.v3.oas.annotations.Operation;

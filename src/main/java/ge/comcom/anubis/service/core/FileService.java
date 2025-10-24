@@ -1,9 +1,8 @@
 package ge.comcom.anubis.service.core;
 
-import ge.comcom.anubis.dto.core.ObjectFileDto;
+import ge.comcom.anubis.dto.ObjectFileDto;
 import ge.comcom.anubis.entity.core.ObjectFileEntity;
 import ge.comcom.anubis.repository.core.ObjectFileRepository;
-import ge.comcom.anubis.repository.core.ObjectVersionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;

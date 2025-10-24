@@ -1,7 +1,7 @@
 package ge.comcom.anubis.controller.core;
 
-import ge.comcom.anubis.dto.core.ObjectFileDto;
-import ge.comcom.anubis.dto.mapper.ObjectFileMapper;
+import ge.comcom.anubis.dto.ObjectFileDto;
+import ge.comcom.anubis.mapper.ObjectFileMapper;
 import ge.comcom.anubis.entity.core.ObjectFileEntity;
 import ge.comcom.anubis.service.core.ObjectFileService;
 import io.swagger.v3.oas.annotations.Operation;

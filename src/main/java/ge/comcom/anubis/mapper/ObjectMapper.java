@@ -1,7 +1,8 @@
-package ge.comcom.anubis.dto.mapper;
+package ge.comcom.anubis.mapper;
 
-import ge.comcom.anubis.dto.core.ObjectVersionDto;
-import ge.comcom.anubis.entity.core.ObjectVersionEntity;
+
+import ge.comcom.anubis.dto.ObjectDto;
+import ge.comcom.anubis.entity.core.ObjectEntity;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
@@ -11,21 +12,16 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 
 /**
- * Маппер для преобразования между ObjectVersionEntity и ObjectVersionDto.
- * Содержит кастомное преобразование Instant ↔ LocalDateTime.
+ * Mapper for converting between ObjectEntity and ObjectDto.
  */
 @Mapper(componentModel = "spring")
-public interface ObjectVersionMapper {
+public interface ObjectMapper {
 
-    // === Entity → DTO ===
     @Mapping(source = "createdAt", target = "createdAt", qualifiedByName = "instantToLocalDateTime")
-    ObjectVersionDto toDto(ObjectVersionEntity entity);
+    ObjectDto toDto(ObjectEntity entity);
 
-    // === DTO → Entity ===
     @Mapping(source = "createdAt", target = "createdAt", qualifiedByName = "localDateTimeToInstant")
-    ObjectVersionEntity toEntity(ObjectVersionDto dto);
-
-    // --- Кастомные преобразования времени ---
+    ObjectEntity toEntity(ObjectDto dto);
 
     @Named("instantToLocalDateTime")
     default LocalDateTime instantToLocalDateTime(Instant instant) {
