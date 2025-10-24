@@ -1,30 +1,48 @@
 package ge.comcom.anubis.service.core;
 
-import ge.comcom.anubis.entity.core.ObjectVersion;
+import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.repository.core.ObjectVersionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import java.util.List;
-import java.util.Optional;
+
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
 public class ObjectVersionService {
-    private final ObjectVersionRepository objectVersionRepository;
 
-    public List<ObjectVersion> getVersions(Long objectId) {
-        return objectVersionRepository.findByObject_IdOrderByVersionNumDesc(objectId);
+    private final ObjectVersionRepository versionRepository;
+
+    /**
+     * Creates a new version for a given object ID.
+     * If object has no versions yet — starts from version 1.
+     */
+    public ObjectVersionEntity createNewVersion(Long objectId, String comment) {
+        Integer lastVersion = versionRepository.findLastVersionNumber(objectId);
+        int newVersion = (lastVersion == null ? 1 : lastVersion + 1);
+
+        ObjectVersionEntity entity = ObjectVersionEntity.builder()
+                .objectId(objectId)
+                .versionNumber(newVersion)
+                .createdAt(Instant.now())
+                .createdBy("system") // позже заменим на текущего пользователя
+                .comment(comment != null ? comment : "Auto-created during file upload")
+                .build();
+
+        return versionRepository.save(entity);
     }
 
-    public Optional<ObjectVersion> getById(Long id) {
-        return objectVersionRepository.findById(id);
+    public ObjectVersionEntity getLatestVersion(Long objectId) {
+        return versionRepository.findTopByObjectIdOrderByVersionNumberDesc(objectId)
+                .orElse(null);
     }
 
-    public ObjectVersion save(ObjectVersion version) {
-        return objectVersionRepository.save(version);
+    public ObjectVersionEntity save(ObjectVersionEntity version) {
+        return versionRepository.save(version);
     }
 
     public void delete(Long id) {
-        objectVersionRepository.deleteById(id);
+        versionRepository.deleteById(id);
     }
+
 }
