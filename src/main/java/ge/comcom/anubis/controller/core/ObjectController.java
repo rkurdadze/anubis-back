@@ -2,10 +2,14 @@ package ge.comcom.anubis.controller.core;
 
 import ge.comcom.anubis.dto.ObjectDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
+import ge.comcom.anubis.entity.core.ObjectLinkEntity;
+import ge.comcom.anubis.enums.LinkDirection;
 import ge.comcom.anubis.mapper.ObjectMapper;
 import ge.comcom.anubis.service.core.ObjectService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -14,43 +18,91 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * REST controller for managing repository objects.
- * Supports CRUD operations and soft-deletion.
+ * REST controller for managing logical repository objects.
+ * <p>
+ * Provides CRUD operations, soft/hard deletion, and relationship (link) management
+ * between repository objects, following M-Files-like model.
+ * </p>
  */
 @RestController
 @RequestMapping("/api/v1/objects")
 @RequiredArgsConstructor
-@Tag(name = "Objects", description = "API for managing logical repository objects")
+@Tag(name = "Objects", description = "API for managing logical repository objects and relationships")
 public class ObjectController {
 
     private final ObjectService objectService;
     private final ObjectMapper mapper;
 
+    // ============================================================
+    // CRUD OPERATIONS
+    // ============================================================
+
+    /**
+     * Retrieves all active (non-deleted) repository objects.
+     *
+     * @return list of active objects as DTOs
+     */
     @GetMapping
-    @Operation(summary = "Get all active objects", description = "Returns all non-deleted objects")
+    @Operation(summary = "Get all active objects",
+            description = "Returns all non-deleted logical repository objects.")
+    @ApiResponse(responseCode = "200", description = "List of active objects returned successfully.")
     public List<ObjectDto> getAll() {
         return objectService.getAllActive().stream()
                 .map(mapper::toDto)
                 .toList();
     }
 
+    /**
+     * Retrieves a specific object by its ID.
+     *
+     * @param id unique identifier of the object
+     * @return object DTO representation
+     */
     @GetMapping("/{id}")
-    @Operation(summary = "Get object by ID", description = "Returns a single object entity by its ID")
+    @Operation(summary = "Get object by ID",
+            description = "Returns a single repository object entity by its database ID.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Object retrieved successfully."),
+            @ApiResponse(responseCode = "404", description = "Object not found.")
+    })
     public ObjectDto getById(
             @Parameter(description = "Object ID", example = "1001") @PathVariable Long id) {
         return mapper.toDto(objectService.getById(id));
     }
 
+    /**
+     * Creates a new repository object.
+     *
+     * @param dto DTO representation of the new object
+     * @return created object DTO
+     */
     @PostMapping
-    @Operation(summary = "Create new object", description = "Creates a new repository object")
+    @Operation(summary = "Create new object",
+            description = "Creates a new logical repository object and persists it.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Object created successfully."),
+            @ApiResponse(responseCode = "400", description = "Invalid request payload.")
+    })
     public ObjectDto create(@RequestBody ObjectDto dto) {
         ObjectEntity entity = mapper.toEntity(dto);
         ObjectEntity saved = objectService.create(entity);
         return mapper.toDto(saved);
     }
 
+    /**
+     * Updates an existing repository object.
+     *
+     * @param id  object ID to update
+     * @param dto new data for the object
+     * @return updated object DTO
+     */
     @PutMapping("/{id}")
-    @Operation(summary = "Update object", description = "Updates an existing object entity by ID")
+    @Operation(summary = "Update object",
+            description = "Updates an existing logical repository object by ID.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Object updated successfully."),
+            @ApiResponse(responseCode = "404", description = "Object not found.")
+    })
     public ObjectDto update(
             @Parameter(description = "Object ID", example = "1001") @PathVariable Long id,
             @RequestBody ObjectDto dto) {
@@ -59,19 +111,134 @@ public class ObjectController {
         return mapper.toDto(updated);
     }
 
+    /**
+     * Performs a soft deletion (logical delete) of an object.
+     * The record remains in the database but marked as deleted.
+     */
     @DeleteMapping("/{id}")
-    @Operation(summary = "Soft delete object", description = "Marks the object as deleted instead of physical removal")
+    @Operation(summary = "Soft delete object",
+            description = "Marks an object as deleted without removing it physically.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Object marked as deleted."),
+            @ApiResponse(responseCode = "404", description = "Object not found.")
+    })
     public ResponseEntity<Void> softDelete(
             @Parameter(description = "Object ID", example = "1001") @PathVariable Long id) {
         objectService.softDelete(id, null); // TODO: pass authenticated user later
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Performs a physical (hard) deletion of an object from the database.
+     */
     @DeleteMapping("/{id}/hard")
-    @Operation(summary = "Hard delete object", description = "Permanently removes the object from the database")
+    @Operation(summary = "Hard delete object",
+            description = "Permanently removes an object from the database.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Object deleted permanently."),
+            @ApiResponse(responseCode = "404", description = "Object not found.")
+    })
     public ResponseEntity<Void> hardDelete(
             @Parameter(description = "Object ID", example = "1001") @PathVariable Long id) {
         objectService.hardDelete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ============================================================
+    // RELATIONSHIPS (LINKS)
+    // ============================================================
+
+    /**
+     * Retrieves an object along with all its related links.
+     * Returns both incoming and outgoing object relationships.
+     */
+    @GetMapping("/{id}/links")
+    @Operation(summary = "Get object with links",
+            description = "Returns the object along with all related incoming and outgoing links.")
+    @ApiResponse(responseCode = "200", description = "Object with its links returned successfully.")
+    public ResponseEntity<ObjectEntity> getObjectWithLinks(
+            @Parameter(description = "Object ID", example = "1001") @PathVariable Long id) {
+        return ResponseEntity.ok(objectService.getWithLinks(id));
+    }
+
+    /**
+     * Retrieves all outgoing links (object → others) for a specific object.
+     */
+    @GetMapping("/{id}/links/outgoing")
+    @Operation(summary = "Get outgoing links",
+            description = "Returns all outgoing relationships (object → others) for the given object.")
+    @ApiResponse(responseCode = "200", description = "Outgoing links returned successfully.")
+    public ResponseEntity<List<ObjectLinkEntity>> getOutgoing(
+            @Parameter(description = "Object ID", example = "1001") @PathVariable Long id) {
+        return ResponseEntity.ok(objectService.getOutgoingLinks(id));
+    }
+
+    /**
+     * Retrieves all incoming links (others → object) for a specific object.
+     */
+    @GetMapping("/{id}/links/incoming")
+    @Operation(summary = "Get incoming links",
+            description = "Returns all incoming relationships (others → object) for the given object.")
+    @ApiResponse(responseCode = "200", description = "Incoming links returned successfully.")
+    public ResponseEntity<List<ObjectLinkEntity>> getIncoming(
+            @Parameter(description = "Object ID", example = "1001") @PathVariable Long id) {
+        return ResponseEntity.ok(objectService.getIncomingLinks(id));
+    }
+
+    /**
+     * Creates a new link (relationship) between two objects.
+     * <p>
+     * If the link direction is BI (bidirectional), a reciprocal link will be automatically created.
+     * </p>
+     *
+     * Example:
+     * <pre>
+     * POST /api/v1/objects/link?sourceId=1&targetId=2&role=Customer&direction=BI
+     * </pre>
+     */
+    @PostMapping("/link")
+    @Operation(summary = "Create object link",
+            description = "Creates a new relationship between two objects. "
+                    + "If direction is BI (bidirectional), the reverse link is created automatically.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Link(s) created successfully."),
+            @ApiResponse(responseCode = "404", description = "One or both target objects not found.")
+    })
+    public ResponseEntity<ObjectLinkEntity> createLink(
+            @Parameter(description = "Source object ID", example = "1") @RequestParam Long sourceId,
+            @Parameter(description = "Target object ID", example = "2") @RequestParam Long targetId,
+            @Parameter(description = "Relationship role name", example = "Customer") @RequestParam String role,
+            @Parameter(description = "Link direction (UNI or BI)", example = "BI")
+            @RequestParam(defaultValue = "UNI") LinkDirection direction
+    ) {
+        return ResponseEntity.ok(objectService.createLink(sourceId, targetId, role, direction));
+    }
+
+    /**
+     * Deletes all links between two objects for the specified relationship role.
+     * <p>
+     * For bidirectional links (BI), both directions are removed.
+     * </p>
+     *
+     * Example:
+     * <pre>
+     * DELETE /api/v1/objects/link?sourceId=1&targetId=2&role=Customer
+     * </pre>
+     */
+    @DeleteMapping("/link")
+    @Operation(summary = "Delete object link",
+            description = "Removes relationship(s) between two objects for the specified role. "
+                    + "For bidirectional links, both directions are deleted.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Link(s) deleted successfully."),
+            @ApiResponse(responseCode = "404", description = "No matching link found.")
+    })
+    public ResponseEntity<Void> deleteLink(
+            @Parameter(description = "Source object ID", example = "1") @RequestParam Long sourceId,
+            @Parameter(description = "Target object ID", example = "2") @RequestParam Long targetId,
+            @Parameter(description = "Relationship role name", example = "Customer") @RequestParam String role
+    ) {
+        objectService.removeLink(sourceId, targetId, role);
         return ResponseEntity.noContent().build();
     }
 }

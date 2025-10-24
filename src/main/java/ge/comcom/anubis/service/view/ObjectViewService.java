@@ -2,10 +2,14 @@ package ge.comcom.anubis.service.view;
 
 import ge.comcom.anubis.dto.view.ObjectViewDto;
 import ge.comcom.anubis.dto.view.ViewGroupingDto;
+import ge.comcom.anubis.entity.core.ObjectEntity;
+import ge.comcom.anubis.entity.core.ObjectLinkEntity;
 import ge.comcom.anubis.entity.meta.PropertyDef;
 import ge.comcom.anubis.entity.security.User;
 import ge.comcom.anubis.entity.view.ObjectViewEntity;
 import ge.comcom.anubis.entity.view.ObjectViewGroupingEntity;
+import ge.comcom.anubis.repository.core.ObjectLinkRepository;
+import ge.comcom.anubis.repository.core.ObjectRepository;
 import ge.comcom.anubis.repository.meta.PropertyDefRepository;
 import ge.comcom.anubis.repository.security.UserRepository;
 import ge.comcom.anubis.repository.view.ObjectViewGroupingRepository;
@@ -18,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Service for managing saved views (virtual folders).
@@ -32,6 +37,8 @@ public class ObjectViewService {
     private final ObjectViewGroupingRepository groupingRepository;
     private final UserRepository userRepository;
     private final PropertyDefRepository propertyDefRepository;
+    private final ObjectRepository objectRepository;
+    private final ObjectLinkRepository linkRepository;
 
     /**
      * Creates a new view.
@@ -112,5 +119,62 @@ public class ObjectViewService {
             entities.add(e);
         }
         groupingRepository.saveAll(entities);
+    }
+
+
+
+    /**
+     * Executes a saved view, taking into account both property and relationship filters
+     * including reverse (target-based) relationship filters.
+     *
+     * Example filter_json:
+     * [
+     *   {"link_role": "Customer", "linked_object_id": 42},
+     *   {"reverse_link_role": "Customer", "reverse_linked_object_id": 42}
+     * ]
+     */
+    public List<ObjectEntity> executeView(Long viewId) {
+        ObjectViewEntity view = viewRepository.findById(viewId)
+                .orElseThrow(() -> new EntityNotFoundException("View not found: " + viewId));
+
+        List<Map<String, Object>> filters = parseFilterJson(view.getFilterJson());
+        List<ObjectEntity> results = objectRepository.findAll();
+
+        for (Map<String, Object> f : filters) {
+            // 🔹 Прямые связи (source → target)
+            if (f.containsKey("link_role") && f.containsKey("linked_object_id")) {
+                String role = (String) f.get("link_role");
+                Long linkedId = ((Number) f.get("linked_object_id")).longValue();
+
+                List<ObjectLinkEntity> links = linkRepository.findByTarget_IdAndRole_NameIgnoreCase(linkedId, role);
+                results = results.stream()
+                        .filter(obj -> links.stream()
+                                .anyMatch(l -> l.getSource().getId().equals(obj.getId())))
+                        .toList();
+            }
+
+            // 🔹 Обратные связи (target ← source)
+            if (f.containsKey("reverse_link_role") && f.containsKey("reverse_linked_object_id")) {
+                String role = (String) f.get("reverse_link_role");
+                Long linkedId = ((Number) f.get("reverse_linked_object_id")).longValue();
+
+                List<ObjectLinkEntity> reverseLinks = linkRepository.findBySource_IdAndRole_NameIgnoreCase(linkedId, role);
+                results = results.stream()
+                        .filter(obj -> reverseLinks.stream()
+                                .anyMatch(l -> l.getTarget().getId().equals(obj.getId())))
+                        .toList();
+            }
+        }
+
+        log.info("Executed view {} with {} results", view.getName(), results.size());
+        return results;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> parseFilterJson(Object filterJson) {
+        if (filterJson instanceof List<?>) {
+            return (List<Map<String, Object>>) filterJson;
+        }
+        return List.of();
     }
 }

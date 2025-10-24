@@ -78,4 +78,15 @@ public class ObjectEntity {
     @OneToMany(mappedBy = "object", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Comment("All versions of this object")
     private List<ObjectVersionEntity> versions = new ArrayList<>();
+
+
+
+    @OneToMany(mappedBy = "source", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Comment("Outgoing object links (this object -> others)")
+    private List<ObjectLinkEntity> outgoingLinks = new ArrayList<>();
+
+    @OneToMany(mappedBy = "target", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Comment("Incoming object links (others -> this object)")
+    private List<ObjectLinkEntity> incomingLinks = new ArrayList<>();
+
 }
