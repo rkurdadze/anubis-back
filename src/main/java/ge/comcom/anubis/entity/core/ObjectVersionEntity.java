@@ -1,5 +1,7 @@
 package ge.comcom.anubis.entity.core;
 
+import ge.comcom.anubis.entity.security.Acl;
+import ge.comcom.anubis.entity.security.User;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Comment;
@@ -9,8 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Represents a version of an object.
- * Each version can have multiple attached files.
+ * Represents a single version of an object (M-Files style).
+ * Each version may contain files, metadata, ACL, and lock info.
  */
 @Entity
 @Table(name = "object_version")
@@ -23,31 +25,70 @@ public class ObjectVersionEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Comment("Unique identifier of the version")
+    @Column(name = "version_id")
+    @Comment("Primary key: unique version identifier")
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "object_id", nullable = false)
-    @Comment("Parent object reference")
+    @Comment("FK to parent object")
     private ObjectEntity object;
 
-    @Column(name = "version_number", nullable = false)
-    @Comment("Sequential number of this version")
+    @Column(name = "version_num", nullable = false)
+    @Comment("Sequential version number within object")
     private Integer versionNumber;
 
-    @Column(name = "comment")
-    @Comment("User-provided comment for this version")
-    private String comment;
-
-    @Column(name = "created_by", nullable = false)
-    @Comment("User who created this version")
-    private String createdBy;
-
-    @Column(name = "created_at", nullable = false)
-    @Comment("Timestamp of version creation")
+    @Column(name = "created_at", nullable = false, updatable = false)
+    @Comment("Creation timestamp")
     private Instant createdAt;
 
+    @Column(name = "modified_at")
+    @Comment("Last modification timestamp")
+    private Instant modifiedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by")
+    @Comment("User who created this version")
+    private User createdBy;
+
+    @Column(name = "comment")
+    @Comment("User-provided comment or change note")
+    private String comment;
+
+    @Column(name = "single_file", nullable = false)
+    @Comment("If TRUE, version expects a single file only")
+    private Boolean singleFile = true;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "acl_id")
+    @Comment("Optional ACL overriding object/class/type ACL")
+    private Acl acl;
+
+    @Column(name = "is_locked", nullable = false)
+    @Comment("TRUE if version is currently locked (checked-out)")
+    private Boolean isLocked = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "locked_by")
+    @Comment("User who locked the version")
+    private User lockedBy;
+
+    @Column(name = "locked_at")
+    @Comment("Timestamp of lock creation")
+    private Instant lockedAt;
+
     @OneToMany(mappedBy = "version", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @Comment("List of all files attached to this version")
+    @Comment("List of all attached files for this version")
     private List<ObjectFileEntity> files = new ArrayList<>();
+
+    @PrePersist
+    protected void onCreate() {
+        if (createdAt == null) createdAt = Instant.now();
+        if (modifiedAt == null) modifiedAt = createdAt;
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        modifiedAt = Instant.now();
+    }
 }

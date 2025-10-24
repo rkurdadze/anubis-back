@@ -36,7 +36,7 @@ public class ObjectVersionAuditEntity {
 
     @Column(name = "modified_by")
     @Comment("User ID who performed the change")
-    private Integer modifiedBy;
+    private Long modifiedBy;
 
     @Column(name = "modified_at", nullable = false)
     @Comment("Timestamp when change was made")

@@ -10,6 +10,7 @@ import ge.comcom.anubis.repository.core.ObjectVersionRepository;
 import ge.comcom.anubis.repository.meta.ClassPropertyRepository;
 import ge.comcom.anubis.repository.meta.PropertyDefRepository;
 import ge.comcom.anubis.repository.meta.PropertyValueRepository;
+import ge.comcom.anubis.util.UserContext;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -253,7 +254,7 @@ public class ObjectVersionService {
                 .object(object)
                 .versionNumber(newVersion)
                 .createdAt(Instant.now())
-                .createdBy("system") // TODO: replace with authenticated user
+                .createdBy(UserContext.getCurrentUser()) // TODO: replace with authenticated user
                 .comment(comment != null ? comment : "Auto-created version")
                 .build();
 

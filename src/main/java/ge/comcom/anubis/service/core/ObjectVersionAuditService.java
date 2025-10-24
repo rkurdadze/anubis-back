@@ -4,6 +4,7 @@ import ge.comcom.anubis.entity.core.ObjectVersionAuditEntity;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.enums.VersionChangeType;
 import ge.comcom.anubis.repository.core.ObjectVersionAuditRepository;
+import ge.comcom.anubis.util.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,7 +32,7 @@ public class ObjectVersionAuditService {
      */
     public void logAction(ObjectVersionEntity version,
                           VersionChangeType changeType,
-                          Integer modifiedBy,
+                          Long modifiedBy,
                           String summary) {
 
         ObjectVersionAuditEntity record = ObjectVersionAuditEntity.builder()
@@ -54,7 +55,7 @@ public class ObjectVersionAuditService {
         logAction(
                 version,
                 VersionChangeType.VERSION_CREATED,
-                null,
+                UserContext.getCurrentUser().getId(),
                 "Created new version " + version.getVersionNumber()
         );
     }

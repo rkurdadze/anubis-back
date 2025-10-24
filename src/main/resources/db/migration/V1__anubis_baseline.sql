@@ -523,7 +523,7 @@ CREATE TABLE object_version_audit (
                                       audit_id SERIAL PRIMARY KEY,
                                       version_id INT NOT NULL REFERENCES object_version(version_id) ON DELETE CASCADE,
                                       modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                      modified_by INT REFERENCES "user"(user_id),
+                                      modified_by BIGINT REFERENCES "user"(user_id),
                                       change_type TEXT NOT NULL,
                                       field_changed TEXT,
                                       old_value TEXT,
