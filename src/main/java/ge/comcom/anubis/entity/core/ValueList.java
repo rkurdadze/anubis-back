@@ -3,9 +3,12 @@ package ge.comcom.anubis.entity.core;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Dictionary / picklist used by VALUELIST-type properties.
@@ -31,7 +34,8 @@ public class ValueList {
 
     @Column(name = "name_i18n", columnDefinition = "jsonb")
     @Schema(description = "Localized name (JSON)", example = "{\"en\":\"Status\",\"ru\":\"Статус\"}")
-    private String nameI18n;
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, String> nameI18n;
 
     @OneToMany(mappedBy = "valueList", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("sortOrder ASC")

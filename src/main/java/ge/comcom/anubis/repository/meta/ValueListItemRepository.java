@@ -3,6 +3,7 @@ package ge.comcom.anubis.repository.meta;
 import ge.comcom.anubis.entity.core.ValueListItem;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+
 import java.util.List;
 
 @Repository
@@ -10,8 +11,9 @@ public interface ValueListItemRepository extends JpaRepository<ValueListItem, Lo
 
     List<ValueListItem> findAllByValueListIdOrderBySortOrderAsc(Long valueListId);
 
-    boolean existsByValueListIdAndValueTextIgnoreCase(Long valueListId, String valueText);
+    // ✅ Проверка дублей (новое имя поля — value)
+    boolean existsByValueListIdAndValueIgnoreCase(Long valueListId, String value);
 
-    boolean existsByValueListIdAndValueTextIgnoreCaseAndIdNot(Long valueListId, String valueText, Long excludeId);
+    // ✅ Проверка дублей при обновлении
+    boolean existsByValueListIdAndValueIgnoreCaseAndIdNot(Long valueListId, String value, Long excludeId);
 }
-

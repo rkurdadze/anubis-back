@@ -3,6 +3,8 @@ package ge.comcom.anubis.dto.meta;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 
+import java.util.Map;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -12,8 +14,8 @@ public class ValueListItemDto {
 
     private Long id;
     private Long valueListId;
-    private String valueText;
-    private String valueTextI18n;
+    private String value; // ✅ основное текстовое значение
+    private Map<String, String> valueI18n; // ✅ jsonb
     private Integer sortOrder;
     private Boolean isActive;
     private Long parentItemId;

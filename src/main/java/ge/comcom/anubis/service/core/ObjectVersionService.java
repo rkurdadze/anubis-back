@@ -171,7 +171,7 @@ public class ObjectVersionService {
                     }
                     boolean exists = def.getValueList().getItems().stream()
                             .anyMatch(item -> item.getIsActive() &&
-                                    item.getValueText().equalsIgnoreCase(valueText));
+                                    item.getValue().equalsIgnoreCase(valueText));
 
                     if (!exists) {
                         throw new IllegalStateException(String.format(
@@ -190,7 +190,7 @@ public class ObjectVersionService {
 
                         boolean exists = def.getValueList().getItems().stream()
                                 .anyMatch(item -> item.getIsActive() &&
-                                        item.getValueText().equalsIgnoreCase(trimmed));
+                                        item.getValue().equalsIgnoreCase(trimmed));
 
                         if (!exists) {
                             throw new IllegalStateException(String.format(

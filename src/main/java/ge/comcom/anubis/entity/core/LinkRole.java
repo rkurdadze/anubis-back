@@ -5,6 +5,10 @@ import ge.comcom.anubis.enums.LinkDirection;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Comment;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.Map;
 
 /**
  * Defines reusable relationship roles between objects.
@@ -32,7 +36,8 @@ public class LinkRole {
 
     @Column(name = "name_i18n")
     @Comment("Localized name(s), e.g. {\"en\":\"Customer\",\"ru\":\"Клиент\"}.")
-    private String nameI18n;
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, String> nameI18n;
 
     @Column(name = "description")
     @Comment("Optional textual description for UI and documentation.")

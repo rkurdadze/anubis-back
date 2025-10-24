@@ -3,6 +3,10 @@ package ge.comcom.anubis.entity.core;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.Map;
 
 /**
  * Represents an item within a specific ValueList.
@@ -39,11 +43,12 @@ public class ValueListItem {
 
     @Column(name = "value_text", nullable = false)
     @Schema(description = "Display text of the item", example = "Approved")
-    private String valueText;
+    private String value;
 
     @Column(name = "value_text_i18n", columnDefinition = "jsonb")
     @Schema(description = "Localized value (JSON)", example = "{\"en\":\"Approved\",\"ru\":\"Одобрено\"}")
-    private String valueTextI18n;
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, String> valueI18n;
 
     @Column(name = "sort_order")
     @Schema(description = "Sorting order", example = "10")

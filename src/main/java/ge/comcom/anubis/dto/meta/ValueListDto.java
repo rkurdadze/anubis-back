@@ -3,6 +3,8 @@ package ge.comcom.anubis.dto.meta;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 
+import java.util.Map;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -11,6 +13,6 @@ import lombok.*;
 public class ValueListDto {
     private Long id;
     private String name;
-    private String nameI18n;
+    private Map<String, String> nameI18n;
 }
 
