@@ -17,7 +17,7 @@ import java.util.List;
  * REST controller for managing repository objects.
  */
 @RestController
-@RequestMapping("/api/objects")
+@RequestMapping("/api/v1/objects")
 @RequiredArgsConstructor
 @Tag(name = "Objects", description = "API for managing core repository objects")
 public class ObjectController {

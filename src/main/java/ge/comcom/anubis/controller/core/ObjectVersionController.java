@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
  * Provides endpoints for creating and deleting object versions.
  */
 @RestController
-@RequestMapping("/api/versions")
+@RequestMapping("/api/v1/versions")
 @RequiredArgsConstructor
 @Tag(name = "Object Versions", description = "API for managing object version entities")
 public class ObjectVersionController {

@@ -18,7 +18,7 @@ import java.util.List;
  * Provides CRUD operations for files attached to specific object versions.
  */
 @RestController
-@RequestMapping("/api/files")
+@RequestMapping("/api/v1/files")
 @RequiredArgsConstructor
 @Tag(name = "Object Files", description = "API for managing files related to object versions")
 public class ObjectFileController {

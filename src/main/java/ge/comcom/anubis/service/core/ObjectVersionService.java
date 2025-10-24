@@ -2,6 +2,8 @@ package ge.comcom.anubis.service.core;
 
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
+import ge.comcom.anubis.enums.VersionChangeType;
+import ge.comcom.anubis.repository.core.ObjectRepository;
 import ge.comcom.anubis.repository.core.ObjectVersionRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +16,6 @@ import java.util.List;
 
 /**
  * Service layer for managing object versions.
- * Provides methods for creating, retrieving, and deleting version entities.
  */
 @Service
 @RequiredArgsConstructor
@@ -23,41 +24,50 @@ import java.util.List;
 public class ObjectVersionService {
 
     private final ObjectVersionRepository versionRepository;
+    private final ObjectRepository objectRepository;
+    private final ObjectVersionAuditService auditService;
 
     /**
-     * Saves a new or updated version entity.
-     *
-     * @param entity ObjectVersionEntity to save
-     * @return persisted ObjectVersionEntity
+     * Saves or updates a version entity.
      */
     public ObjectVersionEntity save(ObjectVersionEntity entity) {
         if (entity.getCreatedAt() == null) {
             entity.setCreatedAt(Instant.now());
         }
-        log.info("Saving version for objectId={} versionNumber={}",
+        log.debug("Saving version for objectId={} versionNumber={}",
                 entity.getObject() != null ? entity.getObject().getId() : "null",
                 entity.getVersionNumber());
-        return versionRepository.save(entity);
+
+        ObjectVersionEntity saved = versionRepository.save(entity);
+        auditService.logAction(
+                saved,
+                VersionChangeType.VERSION_SAVED,
+                null,
+                "Version saved/updated by " + entity.getCreatedBy()
+        );
+
+        return saved;
     }
 
     /**
      * Deletes a version entity by ID.
-     *
-     * @param id ID of the version entity to delete
      */
     public void delete(Long id) {
-        if (!versionRepository.existsById(id)) {
-            throw new EntityNotFoundException("Version not found with ID: " + id);
-        }
-        log.warn("Deleting version with id={}", id);
-        versionRepository.deleteById(id);
+        ObjectVersionEntity version = versionRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Version not found with ID: " + id));
+
+        versionRepository.delete(version);
+        auditService.logAction(
+                version,
+                VersionChangeType.VERSION_DELETED,
+                null,
+                "Version deleted"
+        );
+        log.warn("Deleted version id={}", id);
     }
 
     /**
      * Retrieves a version entity by ID.
-     *
-     * @param id ID of the version entity
-     * @return ObjectVersionEntity
      */
     @Transactional(readOnly = true)
     public ObjectVersionEntity getById(Long id) {
@@ -66,10 +76,7 @@ public class ObjectVersionService {
     }
 
     /**
-     * Retrieves all versions associated with a specific object ID.
-     *
-     * @param objectId ID of the object
-     * @return list of ObjectVersionEntity
+     * Retrieves all versions associated with a specific object.
      */
     @Transactional(readOnly = true)
     public List<ObjectVersionEntity> getByObjectId(Long objectId) {
@@ -77,42 +84,52 @@ public class ObjectVersionService {
     }
 
     /**
-     * Automatically creates a new version for a given object ID.
-     * If the object has no previous versions, it starts from version 1.
-     *
-     * @param objectId ID of the object to version
-     * @param comment  optional comment
-     * @return newly created ObjectVersionEntity
+     * Automatically creates a new version for a given object.
      */
     public ObjectVersionEntity createNewVersion(Long objectId, String comment) {
+        ObjectEntity object = objectRepository.findById(objectId)
+                .orElseThrow(() -> new EntityNotFoundException("Object not found: " + objectId));
+
         Integer lastVersion = versionRepository.findLastVersionNumber(objectId);
         int newVersion = (lastVersion == null ? 1 : lastVersion + 1);
 
-        ObjectEntity objectRef = new ObjectEntity();
-        objectRef.setId(objectId);
-
         ObjectVersionEntity entity = ObjectVersionEntity.builder()
-                .object(objectRef)
+                .object(object)
                 .versionNumber(newVersion)
                 .createdAt(Instant.now())
-                .createdBy("system") // TODO: Replace with authenticated user
+                .createdBy("system") // TODO: replace with authenticated user
                 .comment(comment != null ? comment : "Auto-created version")
                 .build();
 
+        ObjectVersionEntity saved = versionRepository.save(entity);
+        auditService.logAction(
+                saved,
+                VersionChangeType.VERSION_CREATED,
+                null,
+                "Created new version " + newVersion
+        );
+
         log.info("Auto-created version {} for object {}", newVersion, objectId);
-        return versionRepository.save(entity);
+        return saved;
     }
 
     /**
-     * Retrieves the latest version for a given object.
-     *
-     * @param objectId ID of the object
-     * @return the latest ObjectVersionEntity or null if none exists
+     * Returns the latest version for a given object.
      */
     @Transactional(readOnly = true)
     public ObjectVersionEntity getLatestVersion(Long objectId) {
         return versionRepository
                 .findTopByObject_IdOrderByVersionNumberDesc(objectId)
                 .orElse(null);
+    }
+
+    /**
+     * Returns latest version or creates if none exists.
+     */
+    public ObjectVersionEntity getOrCreateLatestVersion(Long objectId) {
+        ObjectVersionEntity latest = getLatestVersion(objectId);
+        return (latest != null)
+                ? latest
+                : createNewVersion(objectId, "Auto-created initial version");
     }
 }
