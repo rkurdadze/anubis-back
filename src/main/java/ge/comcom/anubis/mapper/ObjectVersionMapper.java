@@ -19,10 +19,12 @@ public interface ObjectVersionMapper {
 
     // === Entity → DTO ===
     @Mapping(source = "createdAt", target = "createdAt", qualifiedByName = "instantToLocalDateTime")
+    @Mapping(source = "modifiedAt", target = "modifiedAt", qualifiedByName = "instantToLocalDateTime")
     ObjectVersionDto toDto(ObjectVersionEntity entity);
 
     // === DTO → Entity ===
     @Mapping(source = "createdAt", target = "createdAt", qualifiedByName = "localDateTimeToInstant")
+    @Mapping(source = "modifiedAt", target = "modifiedAt", qualifiedByName = "localDateTimeToInstant")
     ObjectVersionEntity toEntity(ObjectVersionDto dto);
 
     // --- Кастомные преобразования времени ---
