@@ -5,6 +5,8 @@ import lombok.*;
 import org.hibernate.annotations.Comment;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Represents a logical object in the repository.
@@ -47,4 +49,8 @@ public class ObjectEntity {
     @Column(name = "is_archived", nullable = false)
     @Comment("Indicates whether the object is archived")
     private Boolean isArchived = false;
+
+    @OneToMany(mappedBy = "object", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Comment("List of all versions belonging to this object")
+    private List<ObjectVersionEntity> versions = new ArrayList<>();
 }

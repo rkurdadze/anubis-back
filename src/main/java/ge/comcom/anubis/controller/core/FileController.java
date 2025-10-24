@@ -64,18 +64,20 @@ public class FileController {
                     @ApiResponse(responseCode = "404", description = "File not found")
             }
     )
+
     @GetMapping("/{fileId}/download")
     public ResponseEntity<ByteArrayResource> downloadFile(@PathVariable Long fileId) {
         var file = fileService.getFile(fileId);
         if (file == null) return ResponseEntity.notFound().build();
 
-        ByteArrayResource resource = new ByteArrayResource(file.getData());
+        ByteArrayResource resource = new ByteArrayResource(file.getContent());
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getFilename() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getFileName() + "\"")
                 .contentType(MediaType.parseMediaType(file.getMimeType()))
-                .contentLength(file.getSize())
+                .contentLength(file.getFileSize())
                 .body(resource);
     }
+
 
     // ================================================================
     // Upload file and create version automatically

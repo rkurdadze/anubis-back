@@ -1,5 +1,6 @@
 package ge.comcom.anubis.service.core;
 
+import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.repository.core.ObjectVersionRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -33,7 +34,9 @@ public class ObjectVersionService {
         if (entity.getCreatedAt() == null) {
             entity.setCreatedAt(Instant.now());
         }
-        log.info("Saving version for objectId={} versionNumber={}", entity.getObjectId(), entity.getVersionNumber());
+        log.info("Saving version for objectId={} versionNumber={}",
+                entity.getObject() != null ? entity.getObject().getId() : "null",
+                entity.getVersionNumber());
         return versionRepository.save(entity);
     }
 
@@ -70,7 +73,7 @@ public class ObjectVersionService {
      */
     @Transactional(readOnly = true)
     public List<ObjectVersionEntity> getByObjectId(Long objectId) {
-        return versionRepository.findByObjectIdOrderByVersionNumberAsc(objectId);
+        return versionRepository.findByObject_IdOrderByVersionNumberAsc(objectId);
     }
 
     /**
@@ -85,8 +88,11 @@ public class ObjectVersionService {
         Integer lastVersion = versionRepository.findLastVersionNumber(objectId);
         int newVersion = (lastVersion == null ? 1 : lastVersion + 1);
 
+        ObjectEntity objectRef = new ObjectEntity();
+        objectRef.setId(objectId);
+
         ObjectVersionEntity entity = ObjectVersionEntity.builder()
-                .objectId(objectId)
+                .object(objectRef)
                 .versionNumber(newVersion)
                 .createdAt(Instant.now())
                 .createdBy("system") // TODO: Replace with authenticated user
@@ -105,7 +111,8 @@ public class ObjectVersionService {
      */
     @Transactional(readOnly = true)
     public ObjectVersionEntity getLatestVersion(Long objectId) {
-        return versionRepository.findTopByObjectIdOrderByVersionNumberDesc(objectId)
+        return versionRepository
+                .findTopByObject_IdOrderByVersionNumberDesc(objectId)
                 .orElse(null);
     }
 }

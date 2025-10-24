@@ -29,31 +29,35 @@ public class FileService {
     }
 
     public ObjectFileDto saveFile(Long objectId, MultipartFile file) throws IOException {
-        // auto-create new version
+        // Auto-create new version for this object
         var version = versionService.createNewVersion(objectId, "Auto-version from upload");
 
+        // Create a lightweight reference to the version
         ObjectFileEntity entity = new ObjectFileEntity();
-        entity.setObjectId(objectId);
-        entity.setVersionId(version.getId());
-        entity.setFilename(file.getOriginalFilename());
+        entity.setVersion(version);
+        entity.setFileName(file.getOriginalFilename());
         entity.setMimeType(file.getContentType());
-        entity.setSize(file.getSize());
+        entity.setFileSize(file.getSize());
+        entity.setUploadedBy("system"); // TODO: replace with authenticated user
         entity.setUploadedAt(Instant.now());
-        entity.setData(file.getBytes());
+        entity.setContent(file.getBytes());
 
         ObjectFileEntity saved = fileRepository.save(entity);
         return toDto(saved);
     }
 
+
     private ObjectFileDto toDto(ObjectFileEntity entity) {
         return ObjectFileDto.builder()
                 .id(entity.getId())
-                .objectId(entity.getObjectId())
-                .versionId(entity.getVersionId())
-                .filename(entity.getFilename())
+                .objectId(entity.getVersion() != null && entity.getVersion().getObject() != null
+                        ? entity.getVersion().getObject().getId() : null)
+                .versionId(entity.getVersion() != null ? entity.getVersion().getId() : null)
+                .filename(entity.getFileName())
                 .mimeType(entity.getMimeType())
-                .size(entity.getSize())
+                .size(entity.getFileSize())
                 .uploadedAt(entity.getUploadedAt().toString())
                 .build();
     }
+
 }
