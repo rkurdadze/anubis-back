@@ -1,6 +1,6 @@
 package ge.comcom.anubis.controller.meta;
 
-import ge.comcom.anubis.dto.meta.ValueListDto;
+import ge.comcom.anubis.dto.ValueListDto;
 import ge.comcom.anubis.service.meta.ValueListService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

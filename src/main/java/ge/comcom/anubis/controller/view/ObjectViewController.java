@@ -1,6 +1,6 @@
 package ge.comcom.anubis.controller.view;
 
-import ge.comcom.anubis.dto.view.ObjectViewDto;
+import ge.comcom.anubis.dto.ObjectViewDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.entity.view.ObjectViewEntity;
 import ge.comcom.anubis.service.view.ObjectViewService;

@@ -2,7 +2,7 @@ package ge.comcom.anubis.service.view;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import ge.comcom.anubis.dto.view.ObjectViewFilter;
+import ge.comcom.anubis.dto.ObjectViewFilter;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.entity.view.ObjectViewEntity;
 import ge.comcom.anubis.repository.core.ObjectVersionRepository;
@@ -14,7 +14,6 @@ import ge.comcom.anubis.service.security.AclService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
-import jakarta.persistence.Tuple;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

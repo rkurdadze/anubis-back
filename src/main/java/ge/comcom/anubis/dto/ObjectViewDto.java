@@ -1,4 +1,4 @@
-package ge.comcom.anubis.dto.view;
+package ge.comcom.anubis.dto;
 
 import lombok.*;
 

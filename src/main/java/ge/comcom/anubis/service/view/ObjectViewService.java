@@ -1,7 +1,7 @@
 package ge.comcom.anubis.service.view;
 
-import ge.comcom.anubis.dto.view.ObjectViewDto;
-import ge.comcom.anubis.dto.view.ViewGroupingDto;
+import ge.comcom.anubis.dto.ObjectViewDto;
+import ge.comcom.anubis.dto.ViewGroupingDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.entity.core.ObjectLinkEntity;
 import ge.comcom.anubis.entity.meta.PropertyDef;

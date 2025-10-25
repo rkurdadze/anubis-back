@@ -1,6 +1,6 @@
 package ge.comcom.anubis.service.meta;
 
-import ge.comcom.anubis.dto.meta.ValueListItemDto;
+import ge.comcom.anubis.dto.ValueListItemDto;
 import ge.comcom.anubis.entity.core.ValueList;
 import ge.comcom.anubis.entity.core.ValueListItem;
 import ge.comcom.anubis.repository.meta.ValueListItemRepository;

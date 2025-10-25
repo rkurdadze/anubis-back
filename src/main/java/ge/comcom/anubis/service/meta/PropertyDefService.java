@@ -1,7 +1,7 @@
 package ge.comcom.anubis.service.meta;
 
-import ge.comcom.anubis.dto.meta.PropertyDefDto;
-import ge.comcom.anubis.dto.meta.PropertyDefRequest;
+import ge.comcom.anubis.dto.PropertyDefDto;
+import ge.comcom.anubis.dto.PropertyDefRequest;
 import ge.comcom.anubis.entity.core.ObjectType;
 import ge.comcom.anubis.entity.core.ValueList;
 import ge.comcom.anubis.entity.meta.PropertyDef;

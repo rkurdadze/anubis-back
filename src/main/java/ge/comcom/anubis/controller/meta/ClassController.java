@@ -1,6 +1,7 @@
 package ge.comcom.anubis.controller.meta;
 
-import ge.comcom.anubis.dto.meta.*;
+import ge.comcom.anubis.dto.ClassDto;
+import ge.comcom.anubis.dto.ClassRequest;
 import ge.comcom.anubis.service.meta.ClassService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;

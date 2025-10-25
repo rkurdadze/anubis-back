@@ -1,7 +1,7 @@
 package ge.comcom.anubis.controller.meta;
 
-import ge.comcom.anubis.dto.meta.ClassPropertyDto;
-import ge.comcom.anubis.dto.meta.ClassPropertyRequest;
+import ge.comcom.anubis.dto.ClassPropertyDto;
+import ge.comcom.anubis.dto.ClassPropertyRequest;
 import ge.comcom.anubis.service.meta.ClassPropertyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

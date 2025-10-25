@@ -1,8 +1,8 @@
 package ge.comcom.anubis.service.meta;
 
 
-import ge.comcom.anubis.dto.meta.ClassDto;
-import ge.comcom.anubis.dto.meta.ClassRequest;
+import ge.comcom.anubis.dto.ClassDto;
+import ge.comcom.anubis.dto.ClassRequest;
 import ge.comcom.anubis.entity.core.ObjectClass;
 import ge.comcom.anubis.entity.core.ObjectType;
 import ge.comcom.anubis.entity.security.Acl;

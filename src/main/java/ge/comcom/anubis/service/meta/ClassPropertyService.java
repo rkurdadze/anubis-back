@@ -1,7 +1,7 @@
 package ge.comcom.anubis.service.meta;
 
-import ge.comcom.anubis.dto.meta.ClassPropertyDto;
-import ge.comcom.anubis.dto.meta.ClassPropertyRequest;
+import ge.comcom.anubis.dto.ClassPropertyDto;
+import ge.comcom.anubis.dto.ClassPropertyRequest;
 import ge.comcom.anubis.entity.core.ObjectClass;
 import ge.comcom.anubis.entity.meta.ClassProperty;
 import ge.comcom.anubis.entity.meta.PropertyDef;
