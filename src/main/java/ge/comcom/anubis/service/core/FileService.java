@@ -1,22 +1,29 @@
 package ge.comcom.anubis.service.core;
 
 import ge.comcom.anubis.dto.ObjectFileDto;
+import ge.comcom.anubis.entity.core.FileStorageEntity;
 import ge.comcom.anubis.entity.core.ObjectFileEntity;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.enums.VersionChangeType;
+import ge.comcom.anubis.repository.core.FileStorageRepository;
 import ge.comcom.anubis.repository.core.ObjectFileRepository;
+import ge.comcom.anubis.service.storage.StorageStrategyRegistry;
+import ge.comcom.anubis.service.storage.VaultService;
+import ge.comcom.anubis.util.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.List;
 
 /**
  * Service for managing object files and linking them with versions.
- * Includes automatic version creation and audit logging.
+ * <p>
+ * Automatically determines storage from vault configuration.
+ * Each vault may have different physical storage backend (DB, FS, S3).
  */
 @Service
 @RequiredArgsConstructor
@@ -25,13 +32,17 @@ public class FileService {
 
     private final ObjectFileRepository fileRepository;
     private final ObjectVersionService versionService;
+    private final ObjectService objectService; // 🔹 новый сервис для доступа к объектам
+    private final VaultService vaultService;   // 🔹 для определения vault → storage
     private final ObjectVersionAuditService auditService;
+    private final FileStorageRepository storageRepository;
+    private final StorageStrategyRegistry strategyRegistry;
 
     /**
      * Returns all files attached to a given object.
      */
     public List<ObjectFileDto> getFilesByObject(Long objectId) {
-        return fileRepository.findByObjectId(objectId).stream()
+        return fileRepository.findByVersionObjectIdOrderByVersionCreatedAtDesc(objectId).stream()
                 .map(this::toDto)
                 .toList();
     }
@@ -40,84 +51,114 @@ public class FileService {
      * Retrieves a file entity by ID.
      */
     public ObjectFileEntity getFile(Long id) {
-        return fileRepository.findById(id).orElse(null);
+        return fileRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("File not found: " + id));
     }
 
     /**
-     * Saves a new file for the object (automatically creates a new version).
-     * Logs FILE_ADDED audit record.
+     * Saves a file for a given object.
+     * Determines storage based on the vault configuration of the object.
      */
+    @Transactional
     public ObjectFileDto saveFile(Long objectId, MultipartFile file) throws IOException {
-        // Auto-create new version
+        var user = UserContext.getCurrentUser();
+
+        // 1️⃣ Get object and resolve its vault
+        var objectEntity = objectService.getObjectById(objectId);
+        var vault = vaultService.getVaultById(objectEntity.getVault().getId());
+
+        // 2️⃣ Resolve file storage from vault
+        FileStorageEntity storage = vault.getDefaultStorage();
+        if (storage == null) {
+            throw new IllegalStateException("No storage configured for vault: " + vault.getName());
+        }
+
+
+        // 3️⃣ Create new version
         ObjectVersionEntity version = versionService.createNewVersion(objectId, "Auto-version from upload");
 
+        // 4️⃣ Prepare file entity
         ObjectFileEntity entity = new ObjectFileEntity();
         entity.setVersion(version);
         entity.setFileName(file.getOriginalFilename());
         entity.setMimeType(file.getContentType());
         entity.setFileSize(file.getSize());
-        entity.setUploadedBy("system"); // TODO: replace with authenticated user
-        entity.setUploadedAt(Instant.now());
-        entity.setContent(file.getBytes());
+        entity.setStorage(storage);
 
+        // 5️⃣ Apply appropriate storage strategy (DB, FS, S3)
+        var strategy = strategyRegistry.resolve(storage);
+        strategy.save(storage, entity, file);
+
+        // 6️⃣ Persist metadata
         ObjectFileEntity saved = fileRepository.save(entity);
 
-        // Log audit
+        // 7️⃣ Log audit
         auditService.logAction(
                 version,
                 VersionChangeType.FILE_ADDED,
-                null, // TODO: user_id
+                user.getId(),
                 "File uploaded: " + entity.getFileName()
         );
 
-        log.info("File uploaded and version {} created for object {}", version.getVersionNumber(), objectId);
+        log.info(
+                "File '{}' uploaded by '{}' (object={}, version={}, vault={}, storage={})",
+                entity.getFileName(),
+                user.getUsername(),
+                objectId,
+                version.getVersionNumber(),
+                vault.getName(),
+                storage.getKind()
+        );
+
         return toDto(saved);
     }
 
-    /**
-     * Deletes a file and logs FILE_REMOVED in audit.
-     */
+    @Transactional
     public void deleteFile(Long fileId) {
-        ObjectFileEntity file = fileRepository.findById(fileId)
-                .orElseThrow(() -> new RuntimeException("File not found: " + fileId));
+        ObjectFileEntity file = getFile(fileId);
+        var strategy = strategyRegistry.resolve(file.getStorage());
+        var user = UserContext.getCurrentUser();
 
-        ObjectVersionEntity version = file.getVersion();
+        try {
+            strategy.delete(file);
+        } catch (IOException e) {
+            log.error("Failed to delete file content for '{}': {}", file.getFileName(), e.getMessage());
+        }
 
         fileRepository.delete(file);
 
         auditService.logAction(
-                version,
+                file.getVersion(),
                 VersionChangeType.FILE_REMOVED,
-                null,
+                user.getId(),
                 "File deleted: " + file.getFileName()
         );
 
-        log.warn("File deleted: {}", file.getFileName());
+        log.warn("File '{}' deleted by {}", file.getFileName(), user.getUsername());
     }
 
-    /**
-     * Updates an existing file (content replacement) and logs FILE_UPDATED.
-     */
+    @Transactional
     public ObjectFileDto updateFile(Long fileId, MultipartFile newFile) throws IOException {
-        ObjectFileEntity file = fileRepository.findById(fileId)
-                .orElseThrow(() -> new RuntimeException("File not found: " + fileId));
+        ObjectFileEntity file = getFile(fileId);
+        var strategy = strategyRegistry.resolve(file.getStorage());
+        var user = UserContext.getCurrentUser();
+
+        strategy.save(file.getStorage(), file, newFile);
 
         file.setFileName(newFile.getOriginalFilename());
         file.setMimeType(newFile.getContentType());
         file.setFileSize(newFile.getSize());
-        file.setContent(newFile.getBytes());
-        file.setUploadedAt(Instant.now());
 
         ObjectFileEntity updated = fileRepository.save(file);
 
         auditService.logAction(
                 file.getVersion(),
                 VersionChangeType.FILE_UPDATED,
-                null,
+                user.getId(),
                 "File updated: " + file.getFileName()
         );
 
-        log.info("File {} updated successfully", file.getFileName());
+        log.info("File '{}' updated by {}", file.getFileName(), user.getUsername());
         return toDto(updated);
     }
 
@@ -130,7 +171,6 @@ public class FileService {
                 .filename(entity.getFileName())
                 .mimeType(entity.getMimeType())
                 .size(entity.getFileSize())
-                .uploadedAt(entity.getUploadedAt().toString())
                 .build();
     }
 }

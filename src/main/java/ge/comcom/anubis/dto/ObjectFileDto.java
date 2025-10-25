@@ -28,7 +28,4 @@ public class ObjectFileDto {
 
     @Schema(description = "File size in bytes", example = "254698")
     private Long size;
-
-    @Schema(description = "Upload timestamp (ISO 8601)", example = "2025-10-24T13:45:00Z")
-    private String uploadedAt;
 }

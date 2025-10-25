@@ -89,4 +89,9 @@ public class ObjectEntity {
     @Comment("Incoming object links (others -> this object)")
     private List<ObjectLinkEntity> incomingLinks = new ArrayList<>();
 
+
+    /** FK → vault.vault_id (defines which vault this object belongs to) */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "vault_id")
+    private VaultEntity vault;
 }

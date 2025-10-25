@@ -2,12 +2,17 @@ package ge.comcom.anubis.entity.core;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.Comment;
-
 import java.time.Instant;
 
 /**
- * Represents a single file attached to an object version.
+ * Represents a single file attached to a specific object version.
+ * Compatible with schema from V1__anubis_baseline.sql (table "object_file").
+ *
+ * <p>Supports multiple storage types:
+ * <ul>
+ *   <li>Inline (BYTEA) content in DB — {@code inline = true}</li>
+ *   <li>External file path (Filesystem / S3) — {@code inline = false}</li>
+ * </ul>
  */
 @Entity
 @Table(name = "object_file")
@@ -18,38 +23,45 @@ import java.time.Instant;
 @AllArgsConstructor
 public class ObjectFileEntity {
 
+    /** Primary key (file_id) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Comment("Unique identifier of the file record")
+    @Column(name = "file_id")
     private Long id;
 
+    /** FK → object_version.version_id */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "version_id", nullable = false)
-    @Comment("Parent version reference")
+    @JoinColumn(name = "object_version_id", nullable = false)
     private ObjectVersionEntity version;
 
+    /** Original filename, e.g. "contract_v3.pdf" */
     @Column(name = "file_name", nullable = false)
-    @Comment("Original file name")
     private String fileName;
 
-    @Column(name = "mime_type", nullable = false)
-    @Comment("MIME type of the file (e.g. application/pdf)")
-    private String mimeType;
-
-    @Column(name = "file_size")
-    @Comment("Size of the file in bytes")
-    private Long fileSize;
-
+    /** Binary file content, if stored inline in DB */
     @Lob
-    @Column(name = "content", nullable = false)
-    @Comment("Binary file content stored in DB as BLOB")
+    @Column(name = "file_data")
     private byte[] content;
 
-    @Column(name = "uploaded_by", nullable = false)
-    @Comment("User who uploaded the file")
-    private String uploadedBy;
+    /** External path or object key for FS/S3 storages */
+    @Column(name = "external_file_path")
+    private String externalFilePath;
 
-    @Column(name = "uploaded_at", nullable = false)
-    @Comment("Timestamp when file was uploaded")
-    private Instant uploadedAt;
+    /** FK → file_storage.storage_id (defines storage type & config) */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "storage_id")
+    private FileStorageEntity storage;
+
+    /** TRUE → stored inline in DB, FALSE → in FS/S3 */
+    @Column(name = "inline")
+    private boolean inline = true;
+
+    /** File size in bytes */
+    @Column(name = "file_size")
+    private Long fileSize;
+
+    /** MIME type, e.g. "application/pdf" */
+    @Column(name = "content_type")
+    private String mimeType;
+
 }

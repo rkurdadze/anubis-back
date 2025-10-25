@@ -8,12 +8,15 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 
 public interface ObjectFileRepository extends JpaRepository<ObjectFileEntity, Long> {
-    @Query("""
-        SELECT f FROM ObjectFileEntity f
-        WHERE f.version.object.id = :objectId
-        ORDER BY f.uploadedAt DESC
-    """)
-    List<ObjectFileEntity> findByObjectId(@Param("objectId") Long objectId);
+//    @Query("""
+//                SELECT f FROM ObjectFileEntity f
+//                WHERE f.version.object.id = :objectId
+//                ORDER BY f.version.createdAt DESC
+//            """)
+//    List<ObjectFileEntity> findByObjectId(Long objectId);
+
+    List<ObjectFileEntity> findByVersionObjectIdOrderByVersionCreatedAtDesc(Long objectId);
+
 
     List<ObjectFileEntity> findByVersionId(Long versionId);
 }

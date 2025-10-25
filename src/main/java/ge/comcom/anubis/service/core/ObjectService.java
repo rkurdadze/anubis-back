@@ -212,4 +212,9 @@ public class ObjectService {
     public List<ObjectLinkEntity> getIncomingLinks(Long objectId) {
         return linkRepository.findByTarget_Id(objectId);
     }
+
+    public ObjectEntity getObjectById(Long id) {
+        return objectRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Object not found: " + id));
+    }
 }
