@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -50,5 +51,13 @@ public class PropertyDefController {
     public void delete(@PathVariable Long id) {
         service.delete(id);
     }
+
+    @PatchMapping("/{id}/deactivate")
+    @Operation(summary = "Деактивировать PropertyDef (soft-delete)")
+    public ResponseEntity<Void> deactivateProperty(@PathVariable Long id) {
+        service.deactivatePropertyDef(id);
+        return ResponseEntity.noContent().build();
+    }
+
 }
 

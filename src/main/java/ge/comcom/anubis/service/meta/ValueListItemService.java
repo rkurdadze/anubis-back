@@ -127,4 +127,11 @@ public class ValueListItemService {
                 .externalCode(e.getExternalCode())
                 .build();
     }
+
+    public void deactivate(Long id) {
+        ValueListItem e = itemRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("ValueListItem not found: id=" + id));
+        e.setIsActive(false);
+        itemRepository.save(e);
+    }
 }

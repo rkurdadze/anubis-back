@@ -1,5 +1,6 @@
 package ge.comcom.anubis.entity.core;
 
+import ge.comcom.anubis.entity.ActivatableEntity;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.*;
@@ -27,7 +28,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "Single selectable item within a ValueList")
-public class ValueListItem {
+public class ValueListItem implements ActivatableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -57,6 +58,12 @@ public class ValueListItem {
     @Column(name = "is_active")
     @Schema(description = "Active state flag", example = "true")
     private Boolean isActive = true;
+
+    @Override
+    public Boolean getIsActive() { return isActive; }
+    @Override
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_item_id",

@@ -7,7 +7,7 @@ import lombok.*;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "ClassProperty DTO")
+@Schema(description = "DTO для связи Class ↔ PropertyDef")
 public class ClassPropertyDto {
     private Long id;
     private Long classId;
@@ -15,5 +15,6 @@ public class ClassPropertyDto {
     private Boolean isReadonly;
     private Boolean isHidden;
     private Integer displayOrder;
+    private Boolean isActive; // ✅ добавляем флаг активности
 }
 

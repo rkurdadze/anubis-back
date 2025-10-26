@@ -1,5 +1,6 @@
 package ge.comcom.anubis.entity.core;
 
+import ge.comcom.anubis.entity.ActivatableEntity;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.*;
@@ -20,7 +21,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "Value List (dictionary of selectable items)")
-public class ValueList {
+public class ValueList implements ActivatableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -37,9 +38,18 @@ public class ValueList {
     @JdbcTypeCode(SqlTypes.JSON)
     private Map<String, String> nameI18n;
 
+
     @OneToMany(mappedBy = "valueList", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("sortOrder ASC")
     @Schema(description = "List of selectable items")
     @Builder.Default
     private List<ValueListItem> items = new ArrayList<>();
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+
+    @Override
+    public Boolean getIsActive() { return isActive; }
+    @Override
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
 }

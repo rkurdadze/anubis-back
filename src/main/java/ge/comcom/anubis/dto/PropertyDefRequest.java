@@ -4,6 +4,7 @@ import ge.comcom.anubis.enums.PropertyDataType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 import lombok.*;
+import java.util.Map;
 
 @Data
 @Builder
@@ -17,7 +18,7 @@ public class PropertyDefRequest {
     private String name;
 
     @Schema(description = "Localized captions JSON", example = "{\"en\":\"Status\",\"ru\":\"Статус\"}")
-    private String captionI18n;
+    private Map<String, String> captionI18n;
 
     @NotNull
     @Schema(description = "Data type (TEXT, NUMBER, DATE, BOOLEAN, LOOKUP, VALUELIST)", example = "VALUELIST")

@@ -1,11 +1,16 @@
 package ge.comcom.anubis.entity.meta;
 
+import com.vladmihalcea.hibernate.type.json.JsonType;
+import ge.comcom.anubis.entity.ActivatableEntity;
 import ge.comcom.anubis.entity.core.ObjectType;
 import ge.comcom.anubis.entity.core.ValueList;
 import ge.comcom.anubis.enums.PropertyDataType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.Type;
+
+import java.util.Map;
 
 /**
  * Property definition (EAV schema).
@@ -18,7 +23,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "Property Definition (metadata field definition)")
-public class PropertyDef {
+public class PropertyDef implements ActivatableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -30,9 +35,12 @@ public class PropertyDef {
     @Schema(description = "Technical property name (key)", example = "CustomerName")
     private String name;
 
+
+    @Type(JsonType.class) // если используешь Hibernate Types
     @Column(name = "caption_i18n", columnDefinition = "jsonb")
     @Schema(description = "Localized captions as JSON", example = "{\"en\":\"Customer Name\",\"ru\":\"Имя клиента\"}")
-    private String captionI18n;
+    private Map<String, String> captionI18n;
+
 
     @Enumerated(EnumType.STRING)
     @Column(name = "data_type", nullable = false)
@@ -77,4 +85,13 @@ public class PropertyDef {
     @Column
     @Schema(description = "Description of the property purpose", example = "Approval status field")
     private String description;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+
+    @Override
+    public Boolean getIsActive() { return isActive; }
+    @Override
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+
 }

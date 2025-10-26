@@ -65,6 +65,16 @@ public class ValueListService {
                 .id(e.getId())
                 .name(e.getName())
                 .nameI18n(e.getNameI18n())
+                .isActive(e.getIsActive())
                 .build();
+    }
+
+    /**
+     * Мягкое удаление ValueList (soft-delete)
+     */
+    public void deactivate(Long id) {
+        ValueList e = repository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("ValueList not found: id=" + id));
+        repository.deactivate(e);
     }
 }

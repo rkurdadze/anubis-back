@@ -1,6 +1,7 @@
 package ge.comcom.anubis.entity.meta;
 
 
+import ge.comcom.anubis.entity.ActivatableEntity;
 import ge.comcom.anubis.entity.core.ObjectClass;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
@@ -23,7 +24,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "Class-property binding (property availability and UI hints)")
-public class ClassProperty {
+public class ClassProperty implements ActivatableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -56,4 +57,13 @@ public class ClassProperty {
     @Column(name = "display_order")
     @Schema(description = "UI order for display", example = "10")
     private Integer displayOrder;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+
+    @Override
+    public Boolean getIsActive() { return isActive; }
+    @Override
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+
 }

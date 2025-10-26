@@ -1,13 +1,13 @@
 package ge.comcom.anubis.repository.meta;
 
 import ge.comcom.anubis.entity.core.ValueListItem;
-import org.springframework.data.jpa.repository.JpaRepository;
+import ge.comcom.anubis.repository.BaseActiveRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
 
 @Repository
-public interface ValueListItemRepository extends JpaRepository<ValueListItem, Long> {
+public interface ValueListItemRepository extends BaseActiveRepository<ValueListItem, Long> {
 
     List<ValueListItem> findAllByValueListIdOrderBySortOrderAsc(Long valueListId);
 

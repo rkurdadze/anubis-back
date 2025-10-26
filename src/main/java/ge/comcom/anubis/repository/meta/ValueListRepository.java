@@ -1,6 +1,7 @@
 package ge.comcom.anubis.repository.meta;
 
 import ge.comcom.anubis.entity.core.ValueList;
+import ge.comcom.anubis.repository.BaseActiveRepository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -15,9 +16,7 @@ import java.util.Optional;
  *  - existsByNameIgnoreCase("CustomerType")
  */
 @Repository
-public interface ValueListRepository extends JpaRepository<ValueList, Long> {
-
-    Optional<ValueList> findByNameIgnoreCase(String name);
+public interface ValueListRepository extends BaseActiveRepository<ValueList, Long> {
 
     boolean existsByNameIgnoreCase(String name);
 

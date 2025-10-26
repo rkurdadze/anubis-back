@@ -83,6 +83,15 @@ public class ClassPropertyService {
                 .isReadonly(e.getIsReadonly())
                 .isHidden(e.getIsHidden())
                 .displayOrder(e.getDisplayOrder())
+                .isActive(e.getIsActive()) // добавлено для поддержки soft-delete
                 .build();
     }
+
+    public void deactivate(Long id) {
+        ClassProperty e = classPropertyRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("ClassProperty not found: id=" + id));
+        e.setIsActive(false);
+        classPropertyRepository.save(e);
+    }
+
 }

@@ -14,6 +14,8 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -58,8 +60,17 @@ public class PropertyDefService {
 
     @Transactional(readOnly = true)
     public Page<PropertyDefDto> list(Pageable pageable) {
-        return repository.findAll(pageable).map(this::toDto);
+        // Фильтруем только активные PropertyDef
+        List<PropertyDefDto> active = repository.findAllActive()
+                .stream()
+                .map(this::toDto)
+                .toList();
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min((start + pageable.getPageSize()), active.size());
+        return new PageImpl<>(active.subList(start, end), pageable, active.size());
     }
+
 
     @Transactional(readOnly = true)
     public PropertyDefDto get(Long id) {
@@ -122,4 +133,12 @@ public class PropertyDefService {
                 .description(e.getDescription())
                 .build();
     }
+
+    @Transactional
+    public void deactivatePropertyDef(Long id) {
+        PropertyDef def = repository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("PropertyDef not found: " + id));
+        repository.deactivate(def);
+    }
+
 }
