@@ -18,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Service for managing object files and linking them with versions.
@@ -35,7 +36,6 @@ public class FileService {
     private final ObjectService objectService; // 🔹 новый сервис для доступа к объектам
     private final VaultService vaultService;   // 🔹 для определения vault → storage
     private final ObjectVersionAuditService auditService;
-    private final FileStorageRepository storageRepository;
     private final StorageStrategyRegistry strategyRegistry;
     private final FullTextSearchService fullTextSearchService;
 
@@ -69,9 +69,9 @@ public class FileService {
         var vault = vaultService.getVaultById(objectEntity.getVault().getId());
 
         // 2️⃣ Resolve file storage from vault
-        FileStorageEntity storage = vault.getDefaultStorage();
+        FileStorageEntity storage = vaultService.resolveStorageForObject(objectEntity);
         if (storage == null) {
-            throw new IllegalStateException("No storage configured for vault: " + vault.getName());
+            throw new IllegalStateException("No storage configured for object: " + objectEntity.getId());
         }
 
 
@@ -109,11 +109,22 @@ public class FileService {
                 user.getUsername(),
                 objectId,
                 version.getVersionNumber(),
-                vault.getName(),
+                objectEntity.getVault() != null ? objectEntity.getVault().getName() : "n/a",
                 storage.getKind()
         );
 
         return toDto(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public FileDownload loadFile(Long fileId) throws IOException {
+        ObjectFileEntity file = getFile(fileId);
+        var strategy = strategyRegistry.resolve(file.getStorage());
+        byte[] data = strategy.load(file);
+        if (data == null) {
+            throw new IOException("Storage strategy returned null content for file " + fileId);
+        }
+        return new FileDownload(file, data);
     }
 
     @Transactional
@@ -186,4 +197,24 @@ public class FileService {
                 .size(entity.getFileSize())
                 .build();
     }
+
+
+    public static class FileDownload {
+        private final ObjectFileEntity file;
+        private final byte[] content;
+
+        public FileDownload(ObjectFileEntity file, byte[] content) {
+            this.file = Objects.requireNonNull(file, "file");
+            this.content = Objects.requireNonNull(content, "content");
+        }
+
+        public ObjectFileEntity getFile() {
+            return file;
+        }
+
+        public byte[] getContent() {
+            return content;
+        }
+    }
+
 }
