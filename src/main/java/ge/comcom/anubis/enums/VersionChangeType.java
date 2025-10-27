@@ -9,5 +9,6 @@ public enum VersionChangeType {
     VERSION_DELETED,
     FILE_ADDED,
     FILE_REMOVED,
-    FILE_UPDATED
+    FILE_UPDATED,
+    FILE_UPLOAD_FAILED
 }

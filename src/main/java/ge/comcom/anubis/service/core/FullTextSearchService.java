@@ -55,27 +55,32 @@ public class FullTextSearchService {
 
     @PostConstruct
     private void initEngines() {
-        try {
-            languageDetector = new OptimaizeLangDetector().loadModels();
-            log.info("🗣️ Language detector initialized (Optimaize)");
-        } catch (Exception e) { // можно оставить общий Exception
+        // Инициализация детектора языка
+        if (languageDetectProperties.isEnabled()) {
+            try {
+                languageDetector = new OptimaizeLangDetector().loadModels();
+                log.info("Language detector initialized (Optimaize)");
+            } catch (Exception e) {
+                languageDetector = null;
+                log.warn("Language detector failed to initialize: {}. Will skip language detection.", e.getMessage());
+            }
+        } else {
             languageDetector = null;
-            log.warn("⚠️ Language detector disabled: {}", e.getMessage());
+            log.info("Language detection disabled in configuration.");
         }
 
-        if (!ocrProperties.isEnabled()) {
-            log.info("🧩 OCR disabled in configuration.");
-            return;
+        // OCR — независимо от языка
+        if (ocrProperties.isEnabled()) {
+            ocr = new Tesseract();
+            ocr.setDatapath(ocrProperties.getDatapath());
+            ocr.setLanguage(ocrProperties.getLanguages());
+            ocr.setPageSegMode(ocrProperties.getPsm());
+            ocr.setOcrEngineMode(ocrProperties.getOem());
+            log.info("OCR initialized: path={}, languages={}",
+                    ocrProperties.getDatapath(), ocrProperties.getLanguages());
+        } else {
+            log.info("OCR disabled in configuration.");
         }
-
-        ocr = new Tesseract();
-        ocr.setDatapath(ocrProperties.getDatapath());
-        ocr.setLanguage(ocrProperties.getLanguages());
-        ocr.setPageSegMode(ocrProperties.getPsm());
-        ocr.setOcrEngineMode(ocrProperties.getOem());
-
-        log.info("🧠 OCR initialized: path={}, languages={}",
-                ocrProperties.getDatapath(), ocrProperties.getLanguages());
     }
 
 
@@ -85,20 +90,15 @@ public class FullTextSearchService {
     @Async
     @Transactional
     public void indexObjectFile(ObjectFileEntity fileEntity) {
-        if (!languageDetectProperties.isEnabled()) {
-            log.debug("🔕 Language detection disabled. Skipping indexing for file {}", fileEntity.getId());
-            return;
-        }
-
         Long versionId = fileEntity.getVersion() != null ? fileEntity.getVersion().getId() : null;
         if (versionId == null) {
-            log.warn("⚠️ File {} has no linked version. Skipping indexing.", fileEntity.getId());
+            log.warn("File {} has no linked version. Skipping indexing.", fileEntity.getId());
             return;
         }
 
         File localFile = getLocalFile(fileEntity);
         if (localFile == null || !localFile.exists()) {
-            log.warn("⚠️ File for {} not found or cannot be accessed", fileEntity.getId());
+            log.warn("File for {} not found or cannot be accessed", fileEntity.getId());
             return;
         }
 
@@ -107,34 +107,45 @@ public class FullTextSearchService {
             String text;
 
             if (mime.startsWith("image/") || mime.equals("application/pdf")) {
-                // OCR для изображений и PDF-сканов
                 text = extractWithOCR(localFile);
             } else {
-                // Текстовое извлечение Tika
                 text = tika.parseToString(localFile);
             }
 
-            if (text != null && !text.isBlank()) {
-                SearchTextCache cache = new SearchTextCache();
-                cache.setObjectVersionId(versionId);
-                cache.setExtractedTextRaw(text); // ✅ обновлённое имя поля
+            if (text == null || text.isBlank()) {
+                log.warn("No text extracted for version_id={}", versionId);
+                return;
+            }
 
+            // СОЗДАЁМ КЭШ ВСЕГДА
+            SearchTextCache cache = new SearchTextCache();
+            cache.setObjectVersionId(versionId);
+            cache.setExtractedTextRaw(text);
+
+            // ЯЗЫК — ОПЦИОНАЛЬНО
+            if (languageDetectProperties.isEnabled()) {
                 LanguageResult languageResult = detectLanguage(text);
                 if (languageResult != null && !languageResult.isUnknown()) {
                     cache.setDetectedLanguage(languageResult.getLanguage());
                     cache.setLanguageConfidence(Double.valueOf(languageResult.getRawScore()));
+                    log.debug("Detected language: {} (confidence: {})",
+                            languageResult.getLanguage(), languageResult.getRawScore());
+                } else {
+                    log.debug("Language detection: unknown or failed");
                 }
-
-                cacheRepository.save(cache);
-                log.info("✅ Indexed version_id={} [{} chars]", versionId, text.length());
             } else {
-                log.warn("⚠️ No text extracted for version_id={}", versionId);
+                log.debug("Language detection disabled — skipping");
             }
 
+            cacheRepository.save(cache);
+            log.info("Indexed version_id={} [{} chars, lang={}]",
+                    versionId, text.length(),
+                    cache.getDetectedLanguage() != null ? cache.getDetectedLanguage() : "none");
+
         } catch (IOException | TikaException | TesseractException e) {
-            log.error("❌ Failed to extract text for file {}: {}", fileEntity.getId(), e.getMessage());
+            log.error("Failed to extract text for file {}: {}", fileEntity.getId(), e.getMessage(), e);
         } finally {
-            if (fileEntity.isInline()) {
+            if (fileEntity.isInline() && localFile != null) {
                 try {
                     Files.deleteIfExists(localFile.toPath());
                 } catch (IOException ignored) {}
@@ -175,14 +186,14 @@ public class FullTextSearchService {
     }
 
     private LanguageResult detectLanguage(String text) {
-        if (languageDetector == null || text == null || text.isBlank()) {
+        if (!languageDetectProperties.isEnabled() || languageDetector == null || text == null || text.isBlank()) {
             return null;
         }
 
         try {
-            return languageDetector.detect(text); // без .copy()
+            return languageDetector.detect(text);
         } catch (Exception e) {
-            log.warn("⚠️ Language detection failed: {}", e.getMessage());
+            log.warn("Language detection failed: {}", e.getMessage());
             return null;
         }
     }

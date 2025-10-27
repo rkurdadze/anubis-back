@@ -283,4 +283,13 @@ public class ObjectVersionService {
                 ? latest
                 : createNewVersion(objectId, "Auto-created initial version");
     }
+
+
+
+    @Transactional
+    public void deleteVersion(Long versionId) {
+        var version = versionRepository.findById(versionId)
+                .orElseThrow(() -> new IllegalArgumentException("Version not found: " + versionId));
+        versionRepository.delete(version);
+    }
 }

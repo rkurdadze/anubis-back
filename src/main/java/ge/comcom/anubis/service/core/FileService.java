@@ -64,56 +64,97 @@ public class FileService {
     public ObjectFileDto saveFile(Long objectId, MultipartFile file) throws IOException {
         var user = UserContext.getCurrentUser();
 
-        // 1️⃣ Get object and resolve its vault
+        // 1. Получаем объект
         var objectEntity = objectService.getObjectById(objectId);
-        var vault = vaultService.getVaultById(objectEntity.getVault().getId());
-
-        // 2️⃣ Resolve file storage from vault
-        FileStorageEntity storage = vaultService.resolveStorageForObject(objectEntity);
-        if (storage == null) {
-            throw new IllegalStateException("No storage configured for object: " + objectEntity.getId());
+        if (objectEntity.getVault() == null) {
+            throw new IllegalStateException("Object " + objectId + " has no vault assigned");
         }
 
+        // 2. Получаем vault и storage
+        var vault = vaultService.getVaultById(objectEntity.getVault().getId());
+        if (vault == null) {
+            throw new IllegalStateException("Vault not found: " + objectEntity.getVault().getId());
+        }
 
-        // 3️⃣ Create new version
-        ObjectVersionEntity version = versionService.createNewVersion(objectId, "Auto-version from upload");
+        FileStorageEntity storage = vaultService.resolveStorageForObject(objectEntity);
+        if (storage == null) {
+            throw new IllegalStateException("No storage configured for vault: " + vault.getName());
+        }
 
-        // 4️⃣ Prepare file entity
+        var strategy = strategyRegistry.resolve(storage);
+
         ObjectFileEntity entity = new ObjectFileEntity();
-        entity.setVersion(version);
         entity.setFileName(file.getOriginalFilename());
         entity.setMimeType(file.getContentType());
         entity.setFileSize(file.getSize());
         entity.setStorage(storage);
 
-        // 5️⃣ Apply appropriate storage strategy (DB, FS, S3)
-        var strategy = strategyRegistry.resolve(storage);
-        strategy.save(storage, entity, file);
+        ObjectVersionEntity version = null;
+        ObjectFileEntity savedFile = null;
 
-        // 6️⃣ Persist metadata
-        ObjectFileEntity saved = fileRepository.save(entity);
+        try {
+            // 3. СНАЧАЛА СОХРАНЯЕМ ФАЙЛ (критическая операция)
+            strategy.save(storage, entity, file);
 
-        triggerAsyncIndexing(saved);
+            // 4. ТОЛЬКО ПОСЛЕ УСПЕХА — создаём версию
+            version = versionService.createNewVersion(objectId, "Auto-version from upload");
 
-        // 7️⃣ Log audit
-        auditService.logAction(
-                version,
-                VersionChangeType.FILE_ADDED,
-                user.getId(),
-                "File uploaded: " + entity.getFileName()
-        );
+            // 5. Привязываем файл к версии
+            entity.setVersion(version);
+            savedFile = fileRepository.save(entity);
 
-        log.info(
-                "File '{}' uploaded by '{}' (object={}, version={}, vault={}, storage={})",
-                entity.getFileName(),
-                user.getUsername(),
-                objectId,
-                version.getVersionNumber(),
-                objectEntity.getVault() != null ? objectEntity.getVault().getName() : "n/a",
-                storage.getKind()
-        );
+            // 6. Асинхронная индексация
+            triggerAsyncIndexing(savedFile);
 
-        return toDto(saved);
+            // 7. Успешный аудит
+            auditService.logAction(
+                    version,
+                    VersionChangeType.FILE_ADDED,
+                    user.getId(),
+                    "File uploaded: " + entity.getFileName()
+            );
+
+            log.info(
+                    "File '{}' uploaded by '{}' (object={}, version={}, vault={}, storage={})",
+                    entity.getFileName(), user.getUsername(), objectId,
+                    version.getVersionNumber(), vault.getName(), storage.getKind()
+            );
+
+            return toDto(savedFile);
+
+        } catch (Exception e) {
+            // 8. ОШИБКА: откат + аудит
+            log.error("Failed to upload file '{}': {}", file.getOriginalFilename(), e.getMessage(), e);
+
+            // Удаляем файл, если он был частично сохранён
+            if (entity.getExternalFilePath() != null || entity.isInline()) {
+                try {
+                    strategy.delete(entity);
+                } catch (Exception deleteEx) {
+                    log.warn("Failed to cleanup partially saved file: {}", deleteEx.getMessage());
+                }
+            }
+
+            // Удаляем версию, если она была создана
+            if (version != null) {
+                try {
+                    versionService.deleteVersion(version.getId()); // должен быть @Transactional
+                } catch (Exception deleteVerEx) {
+                    log.error("Failed to delete orphaned version {}: {}", version.getId(), deleteVerEx.getMessage());
+                }
+            }
+
+            // Аудит ошибки
+            auditService.logAction(
+                    null, // version может быть null
+                    VersionChangeType.FILE_UPLOAD_FAILED,
+                    user.getId(),
+                    "File upload failed: " + file.getOriginalFilename() + " | Error: " + e.getMessage()
+            );
+
+            // Пробрасываем исключение — клиент должен знать
+            throw new IOException("Failed to save file: " + e.getMessage(), e);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -183,6 +224,7 @@ public class FileService {
             fullTextSearchService.indexObjectFile(fileEntity);
         } catch (Exception ex) {
             log.error("Failed to schedule indexing for file {}: {}", fileEntity.getId(), ex.getMessage(), ex);
+            // Можно добавить аудит: "Indexing failed"
         }
     }
 
