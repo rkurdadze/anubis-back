@@ -1,9 +1,11 @@
 package ge.comcom.anubis.controller.core;
 
 import ge.comcom.anubis.dto.ObjectDto;
+import ge.comcom.anubis.dto.ObjectLinkDto;
+import ge.comcom.anubis.dto.ObjectLinksDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
-import ge.comcom.anubis.entity.core.ObjectLinkEntity;
 import ge.comcom.anubis.enums.LinkDirection;
+import ge.comcom.anubis.mapper.ObjectLinkMapper;
 import ge.comcom.anubis.mapper.ObjectMapper;
 import ge.comcom.anubis.service.core.ObjectService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +13,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -32,6 +35,7 @@ public class ObjectController {
 
     private final ObjectService objectService;
     private final ObjectMapper mapper;
+    private final ObjectLinkMapper linkMapper;
 
     // ============================================================
     // CRUD OPERATIONS
@@ -83,9 +87,8 @@ public class ObjectController {
             @ApiResponse(responseCode = "200", description = "Object created successfully."),
             @ApiResponse(responseCode = "400", description = "Invalid request payload.")
     })
-    public ObjectDto create(@RequestBody ObjectDto dto) {
-        ObjectEntity entity = mapper.toEntity(dto);
-        ObjectEntity saved = objectService.create(entity);
+    public ObjectDto create(@Valid @RequestBody ObjectDto dto) {
+        ObjectEntity saved = objectService.create(dto);
         return mapper.toDto(saved);
     }
 
@@ -105,9 +108,8 @@ public class ObjectController {
     })
     public ObjectDto update(
             @Parameter(description = "Object ID", example = "1001") @PathVariable Long id,
-            @RequestBody ObjectDto dto) {
-        ObjectEntity entity = mapper.toEntity(dto);
-        ObjectEntity updated = objectService.update(id, entity);
+            @Valid @RequestBody ObjectDto dto) {
+        ObjectEntity updated = objectService.update(id, dto);
         return mapper.toDto(updated);
     }
 
@@ -156,9 +158,15 @@ public class ObjectController {
     @Operation(summary = "Get object with links",
             description = "Returns the object along with all related incoming and outgoing links.")
     @ApiResponse(responseCode = "200", description = "Object with its links returned successfully.")
-    public ResponseEntity<ObjectEntity> getObjectWithLinks(
+    public ResponseEntity<ObjectLinksDto> getObjectWithLinks(
             @Parameter(description = "Object ID", example = "1001") @PathVariable Long id) {
-        return ResponseEntity.ok(objectService.getWithLinks(id));
+        ObjectEntity entity = objectService.getWithLinks(id);
+        ObjectLinksDto response = ObjectLinksDto.builder()
+                .object(mapper.toDto(entity))
+                .outgoing(linkMapper.toDto(entity.getOutgoingLinks()))
+                .incoming(linkMapper.toDto(entity.getIncomingLinks()))
+                .build();
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -168,9 +176,9 @@ public class ObjectController {
     @Operation(summary = "Get outgoing links",
             description = "Returns all outgoing relationships (object → others) for the given object.")
     @ApiResponse(responseCode = "200", description = "Outgoing links returned successfully.")
-    public ResponseEntity<List<ObjectLinkEntity>> getOutgoing(
+    public ResponseEntity<List<ObjectLinkDto>> getOutgoing(
             @Parameter(description = "Object ID", example = "1001") @PathVariable Long id) {
-        return ResponseEntity.ok(objectService.getOutgoingLinks(id));
+        return ResponseEntity.ok(linkMapper.toDto(objectService.getOutgoingLinks(id)));
     }
 
     /**
@@ -180,9 +188,9 @@ public class ObjectController {
     @Operation(summary = "Get incoming links",
             description = "Returns all incoming relationships (others → object) for the given object.")
     @ApiResponse(responseCode = "200", description = "Incoming links returned successfully.")
-    public ResponseEntity<List<ObjectLinkEntity>> getIncoming(
+    public ResponseEntity<List<ObjectLinkDto>> getIncoming(
             @Parameter(description = "Object ID", example = "1001") @PathVariable Long id) {
-        return ResponseEntity.ok(objectService.getIncomingLinks(id));
+        return ResponseEntity.ok(linkMapper.toDto(objectService.getIncomingLinks(id)));
     }
 
     /**
@@ -204,14 +212,14 @@ public class ObjectController {
             @ApiResponse(responseCode = "200", description = "Link(s) created successfully."),
             @ApiResponse(responseCode = "404", description = "One or both target objects not found.")
     })
-    public ResponseEntity<ObjectLinkEntity> createLink(
+    public ResponseEntity<ObjectLinkDto> createLink(
             @Parameter(description = "Source object ID", example = "1") @RequestParam Long sourceId,
             @Parameter(description = "Target object ID", example = "2") @RequestParam Long targetId,
             @Parameter(description = "Relationship role name", example = "Customer") @RequestParam String role,
             @Parameter(description = "Link direction (UNI or BI)", example = "BI")
             @RequestParam(defaultValue = "UNI") LinkDirection direction
     ) {
-        return ResponseEntity.ok(objectService.createLink(sourceId, targetId, role, direction));
+        return ResponseEntity.ok(linkMapper.toDto(objectService.createLink(sourceId, targetId, role, direction)));
     }
 
     /**

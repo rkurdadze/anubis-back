@@ -103,3 +103,14 @@ dist/
 npm-debug.log*
 yarn-error.log*
 /.mvn/
+src/main/.DS_Store
+src/main/java/.DS_Store
+src/main/java/ge/.DS_Store
+src/main/java/ge/comcom/.DS_Store
+src/main/java/ge/comcom/anubis/.DS_Store
+src/main/java/ge/comcom/anubis/controller/.DS_Store
+src/main/java/ge/comcom/anubis/dto/.DS_Store
+src/main/java/ge/comcom/anubis/entity/.DS_Store
+src/main/java/ge/comcom/anubis/mapper/.DS_Store
+src/main/java/ge/comcom/anubis/repository/.DS_Store
+src/main/java/ge/comcom/anubis/service/.DS_Store

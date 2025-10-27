@@ -53,6 +53,7 @@ public class ObjectFileEntity {
     private FileStorageEntity storage;
 
     /** TRUE → stored inline in DB, FALSE → in FS/S3 */
+    @Builder.Default
     @Column(name = "inline")
     private boolean inline = true;
 

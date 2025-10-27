@@ -1,11 +1,19 @@
 package ge.comcom.anubis.service.core;
 
+import ge.comcom.anubis.dto.ObjectDto;
+import ge.comcom.anubis.entity.core.ObjectClass;
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.entity.core.ObjectLinkEntity;
+import ge.comcom.anubis.entity.core.ObjectType;
+import ge.comcom.anubis.entity.core.VaultEntity;
 import ge.comcom.anubis.entity.security.User;
 import ge.comcom.anubis.enums.LinkDirection;
+import ge.comcom.anubis.mapper.ObjectMapper;
 import ge.comcom.anubis.repository.core.ObjectLinkRepository;
 import ge.comcom.anubis.repository.core.ObjectRepository;
+import ge.comcom.anubis.repository.core.ObjectTypeRepository;
+import ge.comcom.anubis.repository.core.ObjectClassRepository;
+import ge.comcom.anubis.repository.core.VaultRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,14 +38,20 @@ public class ObjectService {
     private final ObjectRepository objectRepository;
     private final ObjectLinkService linkService;
     private final ObjectLinkRepository linkRepository; // Только для incoming links (если нет в linkService)
+    private final ObjectTypeRepository objectTypeRepository;
+    private final ObjectClassRepository objectClassRepository;
+    private final VaultRepository vaultRepository;
+    private final ObjectMapper objectMapper;
 
     /**
      * Creates a new object.
      *
-     * @param entity object to create
+     * @param dto payload describing the object to create
      * @return persisted entity
      */
-    public ObjectEntity create(ObjectEntity entity) {
+    public ObjectEntity create(ObjectDto dto) {
+        ObjectEntity entity = objectMapper.toEntity(dto);
+        applyRelations(entity, dto);
         entity.setIsDeleted(false);
         log.info("Creating new object '{}'", entity.getName());
         return objectRepository.save(entity);
@@ -46,17 +60,15 @@ public class ObjectService {
     /**
      * Updates existing object (only editable fields).
      *
-     * @param id      object ID
-     * @param updated new state
+     * @param id  object ID
+     * @param dto new state
      * @return updated entity
      */
-    public ObjectEntity update(Long id, ObjectEntity updated) {
+    public ObjectEntity update(Long id, ObjectDto dto) {
         ObjectEntity existing = getById(id);
 
-        existing.setName(updated.getName());
-        existing.setObjectType(updated.getObjectType());
-        existing.setObjectClass(updated.getObjectClass());
-        existing.setAcl(updated.getAcl());
+        objectMapper.updateEntityFromDto(dto, existing);
+        applyRelations(existing, dto);
 
         log.info("Updating object ID {}", id);
         return objectRepository.save(existing);
@@ -146,6 +158,36 @@ public class ObjectService {
     @Transactional(readOnly = true)
     public List<ObjectLinkEntity> getIncomingLinks(Long objectId) {
         return linkRepository.findByTarget_Id(objectId);
+    }
+
+    private void applyRelations(ObjectEntity entity, ObjectDto dto) {
+        entity.setObjectType(resolveType(dto.getTypeId()));
+        entity.setObjectClass(resolveClass(dto.getClassId()));
+        entity.setVault(resolveVault(dto.getVaultId()));
+    }
+
+    private ObjectType resolveType(Long typeId) {
+        if (typeId == null) {
+            throw new IllegalArgumentException("Object type must be provided");
+        }
+        return objectTypeRepository.findById(typeId)
+                .orElseThrow(() -> new EntityNotFoundException("Object type not found: " + typeId));
+    }
+
+    private ObjectClass resolveClass(Long classId) {
+        if (classId == null) {
+            return null;
+        }
+        return objectClassRepository.findById(classId)
+                .orElseThrow(() -> new EntityNotFoundException("Object class not found: " + classId));
+    }
+
+    private VaultEntity resolveVault(Long vaultId) {
+        if (vaultId == null) {
+            return null;
+        }
+        return vaultRepository.findById(vaultId)
+                .orElseThrow(() -> new EntityNotFoundException("Vault not found: " + vaultId));
     }
 
     /**

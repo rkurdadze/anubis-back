@@ -55,6 +55,7 @@ public class ObjectVersionEntity {
     @Comment("User-provided comment or change note")
     private String comment;
 
+    @Builder.Default
     @Column(name = "single_file", nullable = false)
     @Comment("If TRUE, version expects a single file only")
     private Boolean singleFile = true;
@@ -64,6 +65,7 @@ public class ObjectVersionEntity {
     @Comment("Optional ACL overriding object/class/type ACL")
     private Acl acl;
 
+    @Builder.Default
     @Column(name = "is_locked", nullable = false)
     @Comment("TRUE if version is currently locked (checked-out)")
     private Boolean isLocked = false;
@@ -77,9 +79,15 @@ public class ObjectVersionEntity {
     @Comment("Timestamp of lock creation")
     private Instant lockedAt;
 
+    @Builder.Default
     @OneToMany(mappedBy = "version", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Comment("List of all attached files for this version")
     private List<ObjectFileEntity> files = new ArrayList<>();
+
+    @Builder.Default
+    @OneToMany(mappedBy = "objectVersion", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Comment("Metadata values associated with this version")
+    private List<PropertyValue> propertyValues = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {

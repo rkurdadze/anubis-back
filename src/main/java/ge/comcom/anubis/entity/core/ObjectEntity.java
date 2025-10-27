@@ -75,16 +75,19 @@ public class ObjectEntity {
     @Comment("User who performed deletion")
     private User deletedBy;
 
+    @Builder.Default
     @OneToMany(mappedBy = "object", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Comment("All versions of this object")
     private List<ObjectVersionEntity> versions = new ArrayList<>();
 
 
 
+    @Builder.Default
     @OneToMany(mappedBy = "source", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Comment("Outgoing object links (this object -> others)")
     private List<ObjectLinkEntity> outgoingLinks = new ArrayList<>();
 
+    @Builder.Default
     @OneToMany(mappedBy = "target", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Comment("Incoming object links (others -> this object)")
     private List<ObjectLinkEntity> incomingLinks = new ArrayList<>();

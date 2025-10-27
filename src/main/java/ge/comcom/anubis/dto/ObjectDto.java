@@ -1,6 +1,9 @@
 package ge.comcom.anubis.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -17,15 +20,20 @@ public class ObjectDto {
     private Long id;
 
     @Schema(description = "Human-readable name", example = "Network License Agreement")
+    @NotBlank
     private String name;
 
     @Schema(description = "Object type ID", example = "3")
+    @NotNull
+    @Positive
     private Long typeId;
 
     @Schema(description = "Object class ID (optional)", example = "1")
+    @Positive
     private Long classId;
 
     @Schema(description = "Vault ID", example = "2")
+    @Positive
     private Long vaultId;
 
     @Schema(description = "Soft-deleted flag", example = "false")

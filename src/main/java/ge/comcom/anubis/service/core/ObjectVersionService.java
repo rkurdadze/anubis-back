@@ -3,6 +3,7 @@ package ge.comcom.anubis.service.core;
 import ge.comcom.anubis.dto.ObjectVersionDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
+import ge.comcom.anubis.entity.core.PropertyValue;
 import ge.comcom.anubis.entity.meta.ClassProperty;
 import ge.comcom.anubis.entity.meta.PropertyDef;
 import ge.comcom.anubis.enums.VersionChangeType;
@@ -10,7 +11,6 @@ import ge.comcom.anubis.mapper.ObjectVersionMapper;
 import ge.comcom.anubis.repository.core.ObjectRepository;
 import ge.comcom.anubis.repository.core.ObjectVersionRepository;
 import ge.comcom.anubis.repository.meta.ClassPropertyRepository;
-import ge.comcom.anubis.repository.meta.PropertyDefRepository;
 import ge.comcom.anubis.repository.meta.PropertyValueRepository;
 import ge.comcom.anubis.util.UserContext;
 import jakarta.persistence.EntityNotFoundException;
@@ -88,7 +88,12 @@ public class ObjectVersionService {
 
         Long classId = obj.getObjectClass().getId();
         List<ClassProperty> bindings = classPropertyRepository.findAllByObjectClassIdOrderByDisplayOrderAsc(classId);
-        var values = propertyValueRepository.findAllByObjectVersionId(version.getId());
+        var values = resolvePropertyValues(version);
+
+        if (version.getId() == null && values.isEmpty()) {
+            log.debug("No metadata provided for new version validation, skipping checks for version of object {}", obj.getId());
+            return;
+        }
 
         for (ClassProperty cp : bindings) {
             PropertyDef def = cp.getPropertyDef();
@@ -211,6 +216,16 @@ public class ObjectVersionService {
                     String.format("Invalid value '%s' for property '%s': %s",
                             valueText, def.getName(), e.getMessage()));
         }
+    }
+
+    private List<PropertyValue> resolvePropertyValues(ObjectVersionEntity version) {
+        if (version.getPropertyValues() != null && !version.getPropertyValues().isEmpty()) {
+            return version.getPropertyValues();
+        }
+        if (version.getId() == null) {
+            return List.of();
+        }
+        return propertyValueRepository.findAllByObjectVersionId(version.getId());
     }
 
     /**
