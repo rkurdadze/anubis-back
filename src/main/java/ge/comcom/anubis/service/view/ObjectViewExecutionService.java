@@ -8,7 +8,7 @@ import ge.comcom.anubis.entity.view.ObjectViewEntity;
 import ge.comcom.anubis.repository.core.ObjectVersionRepository;
 import ge.comcom.anubis.repository.meta.PropertyValueRepository;
 import ge.comcom.anubis.repository.view.ObjectViewRepository;
-import ge.comcom.anubis.service.FullTextSearchService;
+import ge.comcom.anubis.service.core.FullTextSearchService;
 import ge.comcom.anubis.service.security.AclResolverService;
 import ge.comcom.anubis.service.security.AclService;
 import jakarta.persistence.EntityManager;
