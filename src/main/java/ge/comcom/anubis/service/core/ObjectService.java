@@ -1,14 +1,11 @@
 package ge.comcom.anubis.service.core;
 
-import ge.comcom.anubis.entity.core.LinkRole;
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.entity.core.ObjectLinkEntity;
 import ge.comcom.anubis.entity.security.User;
 import ge.comcom.anubis.enums.LinkDirection;
-import ge.comcom.anubis.repository.core.LinkRoleRepository;
 import ge.comcom.anubis.repository.core.ObjectLinkRepository;
 import ge.comcom.anubis.repository.core.ObjectRepository;
-import ge.comcom.anubis.util.UserContext;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +18,8 @@ import java.util.List;
 /**
  * Service layer for managing logical repository objects.
  * Handles CRUD operations with soft-delete logic and audit safety.
+ * <p>
+ * <strong>Link management is delegated to {@link ObjectLinkService}</strong>.
  */
 @Service
 @RequiredArgsConstructor
@@ -29,85 +28,74 @@ import java.util.List;
 public class ObjectService {
 
     private final ObjectRepository objectRepository;
-
-    private final ObjectLinkRepository linkRepository;
-
-    private final LinkRoleRepository linkRoleRepository;
+    private final ObjectLinkService linkService;
+    private final ObjectLinkRepository linkRepository; // Только для incoming links (если нет в linkService)
 
     /**
-     * Creates a new ObjectEntity.
+     * Creates a new object.
      *
-     * @param entity ObjectEntity to create
+     * @param entity object to create
      * @return persisted entity
      */
     public ObjectEntity create(ObjectEntity entity) {
-        // createdAt no longer exists — handled by version entity instead
         entity.setIsDeleted(false);
         log.info("Creating new object '{}'", entity.getName());
         return objectRepository.save(entity);
     }
 
     /**
-     * Updates existing object data.
+     * Updates existing object (only editable fields).
      *
-     * @param id object ID
+     * @param id      object ID
      * @param updated new state
-     * @return updated ObjectEntity
+     * @return updated entity
      */
     public ObjectEntity update(Long id, ObjectEntity updated) {
-        ObjectEntity existing = objectRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Object not found with ID: " + id));
+        ObjectEntity existing = getById(id);
 
-        // Only editable fields should be updated
         existing.setName(updated.getName());
         existing.setObjectType(updated.getObjectType());
         existing.setObjectClass(updated.getObjectClass());
         existing.setAcl(updated.getAcl());
 
-        log.info("Updating object ID {} with new data", id);
+        log.info("Updating object ID {}", id);
         return objectRepository.save(existing);
     }
 
     /**
-     * Performs soft delete (sets isDeleted=true and adds deletedAt timestamp).
+     * Performs soft delete (sets isDeleted=true).
      *
-     * @param id object ID
-     * @param user optional user performing deletion
+     * @param id   object ID
+     * @param user user performing deletion (nullable)
      */
     public void softDelete(Long id, User user) {
-        ObjectEntity entity = objectRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Object not found with ID: " + id));
-
+        ObjectEntity entity = getById(id);
         entity.setIsDeleted(true);
         entity.setDeletedAt(Instant.now());
         entity.setDeletedBy(user);
-
         objectRepository.save(entity);
-        log.warn("Soft-deleted object with ID {} by user {}", id, user != null ? user.getUsername() : "system");
+        log.warn("Soft-deleted object ID {} by {}", id, user != null ? user.getUsername() : "system");
     }
 
     /**
-     * Permanently removes an object from the database.
+     * Permanently removes object from database.
      *
      * @param id object ID
      */
     public void hardDelete(Long id) {
         if (!objectRepository.existsById(id)) {
-            throw new EntityNotFoundException("Object not found with ID: " + id);
+            throw new EntityNotFoundException("Object not found: " + id);
         }
         objectRepository.deleteById(id);
-        log.warn("Hard-deleted object with ID {}", id);
+        log.warn("Hard-deleted object ID {}", id);
     }
 
     /**
-     * Returns all non-deleted objects.
+     * Returns all active (non-deleted) objects.
      */
     @Transactional(readOnly = true)
     public List<ObjectEntity> getAllActive() {
-        return objectRepository.findAll()
-                .stream()
-                .filter(o -> !Boolean.TRUE.equals(o.getIsDeleted()))
-                .toList();
+        return objectRepository.findByIsDeletedFalse();
     }
 
     /**
@@ -116,108 +104,56 @@ public class ObjectService {
     @Transactional(readOnly = true)
     public ObjectEntity getById(Long id) {
         return objectRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Object not found with ID: " + id));
+                .orElseThrow(() -> new EntityNotFoundException("Object not found: " + id));
     }
 
-
-
     /**
-     * Returns object with all incoming/outgoing links.
+     * Retrieves object with all outgoing and incoming links (using JOIN FETCH).
      */
     @Transactional(readOnly = true)
     public ObjectEntity getWithLinks(Long id) {
-        ObjectEntity object = objectRepository.findById(id)
+        return objectRepository.findByIdWithLinks(id)
                 .orElseThrow(() -> new EntityNotFoundException("Object not found: " + id));
-
-        List<ObjectLinkEntity> outgoing = linkRepository.findBySource_Id(id);
-        List<ObjectLinkEntity> incoming = linkRepository.findByTarget_Id(id);
-
-        object.setOutgoingLinks(outgoing);
-        object.setIncomingLinks(incoming);
-
-        log.debug("Loaded object {} with {} outgoing and {} incoming links",
-                id, outgoing.size(), incoming.size());
-
-        return object;
     }
 
+    // === Делегирование в ObjectLinkService ===
+
     /**
-     * Creates a new object link and, if BI, creates a reciprocal link automatically.
+     * Creates a link (UNI or BI). BI creates reciprocal link.
      */
     public ObjectLinkEntity createLink(Long sourceId, Long targetId, String role, LinkDirection direction) {
-        ObjectEntity source = objectRepository.findById(sourceId)
-                .orElseThrow(() -> new EntityNotFoundException("Source object not found: " + sourceId));
-        ObjectEntity target = objectRepository.findById(targetId)
-                .orElseThrow(() -> new EntityNotFoundException("Target object not found: " + targetId));
-
-        LinkRole linkRole = linkRoleRepository.findByNameIgnoreCase(role)
-                .orElseThrow(() -> new EntityNotFoundException("Link role not found: " + role));
-
-
-        // Create primary link
-        ObjectLinkEntity link = ObjectLinkEntity.builder()
-                .source(source)
-                .target(target)
-                .role(linkRole)
-                .direction(direction)
-                .createdAt(Instant.now())
-                .createdBy(UserContext.getCurrentUser())
-                .build();
-        linkRepository.save(link);
-
-        log.info("Created {} link {} → {}", direction, sourceId, targetId);
-
-        // Create reciprocal link automatically if BI
-        if (direction == LinkDirection.BI) {
-            ObjectLinkEntity reciprocal = ObjectLinkEntity.builder()
-                    .source(target)
-                    .target(source)
-                    .role(linkRole)
-                    .direction(direction)
-                    .createdAt(Instant.now())
-                    .createdBy(UserContext.getCurrentUser())
-                    .build();
-
-            linkRepository.save(reciprocal);
-            log.info("Created reciprocal BI link {} → {}", targetId, sourceId);
-        }
-
-        return link;
+        return linkService.createLink(sourceId, targetId, role, direction);
     }
 
     /**
-     * Removes both directions of a link if it exists (for BI links).
+     * Removes all links between two objects with given role (both directions).
      */
     public void removeLink(Long sourceId, Long targetId, String role) {
-        LinkRole linkRole = linkRoleRepository.findByNameIgnoreCase(role)
-                .orElseThrow(() -> new EntityNotFoundException("Link role not found: " + role));
-
-        List<ObjectLinkEntity> links = linkRepository.findBySource_IdOrTarget_Id(sourceId, targetId);
-        links.stream()
-                .filter(l -> l.getRole() != null && linkRole.getId().equals(l.getRole().getId()))
-                .forEach(linkRepository::delete);
-
-        log.info("Removed all links for role='{}' between {} and {}", role, sourceId, targetId);
+        linkService.removeLink(sourceId, targetId, role);
     }
 
     /**
-     * Returns all outgoing links for an object.
+     * Returns all outgoing links from the object.
      */
     @Transactional(readOnly = true)
     public List<ObjectLinkEntity> getOutgoingLinks(Long objectId) {
-        return linkRepository.findBySource_Id(objectId);
+        return linkService.getLinks(objectId);
     }
 
     /**
-     * Returns all incoming links for an object.
+     * Returns all incoming links to the object.
      */
     @Transactional(readOnly = true)
     public List<ObjectLinkEntity> getIncomingLinks(Long objectId) {
         return linkRepository.findByTarget_Id(objectId);
     }
 
+    /**
+     * @deprecated Use {@link #getById(Long)} instead.
+     * @see #getById(Long)
+     */
+    @Deprecated
     public ObjectEntity getObjectById(Long id) {
-        return objectRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Object not found: " + id));
+        return getById(id);
     }
 }

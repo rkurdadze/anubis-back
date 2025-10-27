@@ -2,28 +2,48 @@ package ge.comcom.anubis.mapper;
 
 import ge.comcom.anubis.dto.ObjectDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
+import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.util.List;
 
-@Mapper(componentModel = "spring")
+// ObjectMapper.java
+@Mapper(componentModel = "spring", uses = {InstantMapper.class})
 public interface ObjectMapper {
 
-    // Убираем mapping для createdAt
+    @Mapping(target = "typeId", source = "objectType.id")
+    @Mapping(target = "classId", source = "objectClass.id")
+    @Mapping(target = "vaultId", source = "vault.id")
+    @Mapping(target = "isDeleted", source = "isDeleted")
+    @Mapping(target = "createdAt", source = "versions", qualifiedByName = "firstVersionCreatedAt")
+    @Mapping(target = "createdBy", source = "versions", qualifiedByName = "firstVersionCreatedBy")
     ObjectDto toDto(ObjectEntity entity);
 
+    @Mapping(target = "objectType", ignore = true)
+    @Mapping(target = "objectClass", ignore = true)
+    @Mapping(target = "vault", ignore = true)
+    @Mapping(target = "versions", ignore = true)
+    @Mapping(target = "outgoingLinks", ignore = true)
+    @Mapping(target = "incomingLinks", ignore = true)
+    @Mapping(target = "acl", ignore = true)
+    @Mapping(target = "deletedBy", ignore = true)
+    @Mapping(target = "deletedAt", ignore = true)
     ObjectEntity toEntity(ObjectDto dto);
 
-    @Named("instantToLocalDateTime")
-    default LocalDateTime instantToLocalDateTime(Instant instant) {
-        return instant == null ? null : LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+    @Named("firstVersionCreatedAt")
+    default LocalDateTime firstVersionCreatedAt(List<ObjectVersionEntity> versions) {
+        return versions == null || versions.isEmpty()
+                ? null
+                : InstantMapper.toLocalDateTime(versions.get(0).getCreatedAt());
     }
 
-    @Named("localDateTimeToInstant")
-    default Instant localDateTimeToInstant(LocalDateTime localDateTime) {
-        return localDateTime == null ? null : localDateTime.atZone(ZoneId.systemDefault()).toInstant();
+    @Named("firstVersionCreatedBy")
+    default String firstVersionCreatedBy(List<ObjectVersionEntity> versions) {
+        return versions == null || versions.isEmpty()
+                ? null
+                : versions.get(0).getCreatedBy().getUsername();
     }
 }

@@ -16,19 +16,13 @@ public interface ObjectLinkRepository extends JpaRepository<ObjectLinkEntity, Lo
 
     List<ObjectLinkEntity> findByTarget_Id(Long objectId);
 
-    List<ObjectLinkEntity> findBySource_IdOrTarget_Id(Long sourceId, Long targetId);
-
     // 🔹 Добавлено для обратного поиска
     List<ObjectLinkEntity> findByTarget_IdAndRole_NameIgnoreCase(Long targetId, String roleName);
 
 
     List<ObjectLinkEntity> findBySource_IdAndRole_NameIgnoreCase(Long sourceId, String role);
 
-    void deleteBySource_IdAndTarget_IdAndRole_Id(Long srcId, Long dstId, Long roleId);
-
     boolean existsBySource_IdAndTarget_IdAndRole_Id(Long sourceId, Long targetId, Long roleId);
-
-    List<ObjectLinkEntity> findBySource_IdAndTarget_IdAndRole_Id(Long sourceId, Long targetId, Long roleId);
 
     // В ObjectLinkRepository
     @Modifying
@@ -36,4 +30,5 @@ public interface ObjectLinkRepository extends JpaRepository<ObjectLinkEntity, Lo
             "(l.source.id = :srcId AND l.target.id = :dstId AND l.role.id = :roleId) OR " +
             "(l.source.id = :dstId AND l.target.id = :srcId AND l.role.id = :roleId)")
     int deleteBidirectional(@Param("srcId") Long srcId, @Param("dstId") Long dstId, @Param("roleId") Long roleId);
+
 }
