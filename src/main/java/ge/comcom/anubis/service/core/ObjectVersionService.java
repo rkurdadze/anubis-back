@@ -1,10 +1,12 @@
 package ge.comcom.anubis.service.core;
 
+import ge.comcom.anubis.dto.ObjectVersionDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.entity.meta.ClassProperty;
 import ge.comcom.anubis.entity.meta.PropertyDef;
 import ge.comcom.anubis.enums.VersionChangeType;
+import ge.comcom.anubis.mapper.ObjectVersionMapper;
 import ge.comcom.anubis.repository.core.ObjectRepository;
 import ge.comcom.anubis.repository.core.ObjectVersionRepository;
 import ge.comcom.anubis.repository.meta.ClassPropertyRepository;
@@ -48,7 +50,7 @@ public class ObjectVersionService {
     private final ObjectVersionAuditService auditService;
     private final ClassPropertyRepository classPropertyRepository;
     private final PropertyValueRepository propertyValueRepository;
-    private final PropertyDefRepository propertyDefRepository;
+    private final ObjectVersionMapper versionMapper;
 
     /**
      * Saves or updates an object version, including full metadata validation.
@@ -212,18 +214,6 @@ public class ObjectVersionService {
     }
 
     /**
-     * Deletes a version entity by ID and logs the deletion.
-     */
-    public void delete(Long id) {
-        ObjectVersionEntity version = versionRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Version not found with ID: " + id));
-
-        versionRepository.delete(version);
-        auditService.logAction(version, VersionChangeType.VERSION_DELETED, null, "Version deleted");
-        log.warn("Deleted version id={}", id);
-    }
-
-    /**
      * Retrieves a version entity by ID.
      */
     @Transactional(readOnly = true)
@@ -291,5 +281,19 @@ public class ObjectVersionService {
         var version = versionRepository.findById(versionId)
                 .orElseThrow(() -> new IllegalArgumentException("Version not found: " + versionId));
         versionRepository.delete(version);
+    }
+
+    @Transactional(readOnly = true)
+    public ObjectVersionDto getVersionDto(Long versionId) {
+        ObjectVersionEntity entity = getById(versionId);
+        return versionMapper.toDto(entity);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ObjectVersionDto> getVersionsByObject(Long objectId) {
+        return versionRepository.findByObject_IdOrderByVersionNumberDesc(objectId)
+                .stream()
+                .map(versionMapper::toDto)
+                .toList();
     }
 }

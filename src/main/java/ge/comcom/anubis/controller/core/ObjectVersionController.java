@@ -59,7 +59,7 @@ public class ObjectVersionController {
             @Parameter(description = "Version ID to delete", example = "10")
             @PathVariable Long id) {
 
-        objectVersionService.delete(id);
+        objectVersionService.deleteVersion(id);
         return ResponseEntity.noContent().build();
     }
 }

@@ -18,6 +18,11 @@ public interface ObjectVersionRepository extends JpaRepository<ObjectVersionEnti
     List<ObjectVersionEntity> findByObject_IdOrderByVersionNumberAsc(Long objectId);
 
     /**
+     * Возвращает все версии объекта по его ID, по убыванию номера версии (новые сверху).
+     */
+    List<ObjectVersionEntity> findByObject_IdOrderByVersionNumberDesc(Long objectId);
+
+    /**
      * Возвращает последнюю (максимальную) версию объекта по его ID.
      */
     Optional<ObjectVersionEntity> findTopByObject_IdOrderByVersionNumberDesc(Long objectId);
@@ -36,5 +41,4 @@ public interface ObjectVersionRepository extends JpaRepository<ObjectVersionEnti
        AND v.lockedAt < :cutoff
     """)
     int unlockOlderThan(Instant cutoff);
-
 }
