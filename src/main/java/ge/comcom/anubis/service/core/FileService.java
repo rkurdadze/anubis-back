@@ -37,6 +37,7 @@ public class FileService {
     private final ObjectVersionAuditService auditService;
     private final FileStorageRepository storageRepository;
     private final StorageStrategyRegistry strategyRegistry;
+    private final FullTextSearchService fullTextSearchService;
 
     /**
      * Returns all files attached to a given object.
@@ -91,6 +92,8 @@ public class FileService {
 
         // 6️⃣ Persist metadata
         ObjectFileEntity saved = fileRepository.save(entity);
+
+        triggerAsyncIndexing(saved);
 
         // 7️⃣ Log audit
         auditService.logAction(
@@ -151,6 +154,8 @@ public class FileService {
 
         ObjectFileEntity updated = fileRepository.save(file);
 
+        triggerAsyncIndexing(updated);
+
         auditService.logAction(
                 file.getVersion(),
                 VersionChangeType.FILE_UPDATED,
@@ -160,6 +165,14 @@ public class FileService {
 
         log.info("File '{}' updated by {}", file.getFileName(), user.getUsername());
         return toDto(updated);
+    }
+
+    private void triggerAsyncIndexing(ObjectFileEntity fileEntity) {
+        try {
+            fullTextSearchService.indexObjectFile(fileEntity);
+        } catch (Exception ex) {
+            log.error("Failed to schedule indexing for file {}: {}", fileEntity.getId(), ex.getMessage(), ex);
+        }
     }
 
     private ObjectFileDto toDto(ObjectFileEntity entity) {

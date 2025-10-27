@@ -12,7 +12,7 @@ public interface SearchTextCacheRepository extends JpaRepository<SearchTextCache
     @Query(value = """
         SELECT object_version_id
         FROM search_text_cache
-        WHERE extracted_text @@ plainto_tsquery('russian', :query)
+        WHERE extracted_text_vector @@ websearch_to_tsquery('multilang', :query)
         ORDER BY updated_at DESC
         LIMIT 100
         """, nativeQuery = true)

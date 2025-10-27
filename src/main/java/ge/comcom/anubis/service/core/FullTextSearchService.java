@@ -1,5 +1,6 @@
 package ge.comcom.anubis.service.core;
 
+import ge.comcom.anubis.config.LanguageDetectProperties;
 import ge.comcom.anubis.config.OcrProperties;
 import ge.comcom.anubis.entity.core.ObjectFileEntity;
 import ge.comcom.anubis.entity.core.SearchTextCache;
@@ -15,9 +16,12 @@ import net.sourceforge.tess4j.Tesseract;
 import net.sourceforge.tess4j.TesseractException;
 import org.apache.tika.Tika;
 import org.apache.tika.exception.TikaException;
+import org.apache.tika.langdetect.optimaize.OptimaizeLangDetector;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.apache.tika.language.detect.LanguageDetector;
+import org.apache.tika.language.detect.LanguageResult;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -40,15 +44,25 @@ public class FullTextSearchService {
     private final ObjectFileRepository fileRepository;
     private final SearchTextCacheRepository cacheRepository;
     private final OcrProperties ocrProperties;
+    private final LanguageDetectProperties languageDetectProperties;
 
     private final Tika tika = new Tika();
     private Tesseract ocr;
+    private LanguageDetector languageDetector;
 
     @PersistenceContext
     private EntityManager em;
 
     @PostConstruct
-    private void initTesseract() {
+    private void initEngines() {
+        try {
+            languageDetector = new OptimaizeLangDetector().loadModels();
+            log.info("🗣️ Language detector initialized (Optimaize)");
+        } catch (Exception e) { // можно оставить общий Exception
+            languageDetector = null;
+            log.warn("⚠️ Language detector disabled: {}", e.getMessage());
+        }
+
         if (!ocrProperties.isEnabled()) {
             log.info("🧩 OCR disabled in configuration.");
             return;
@@ -64,12 +78,18 @@ public class FullTextSearchService {
                 ocrProperties.getDatapath(), ocrProperties.getLanguages());
     }
 
+
     /**
      * Извлечение текста из файла и обновление search_text_cache.
      */
     @Async
     @Transactional
     public void indexObjectFile(ObjectFileEntity fileEntity) {
+        if (!languageDetectProperties.isEnabled()) {
+            log.debug("🔕 Language detection disabled. Skipping indexing for file {}", fileEntity.getId());
+            return;
+        }
+
         Long versionId = fileEntity.getVersion() != null ? fileEntity.getVersion().getId() : null;
         if (versionId == null) {
             log.warn("⚠️ File {} has no linked version. Skipping indexing.", fileEntity.getId());
@@ -98,6 +118,13 @@ public class FullTextSearchService {
                 SearchTextCache cache = new SearchTextCache();
                 cache.setObjectVersionId(versionId);
                 cache.setExtractedTextRaw(text); // ✅ обновлённое имя поля
+
+                LanguageResult languageResult = detectLanguage(text);
+                if (languageResult != null && !languageResult.isUnknown()) {
+                    cache.setDetectedLanguage(languageResult.getLanguage());
+                    cache.setLanguageConfidence(Double.valueOf(languageResult.getRawScore()));
+                }
+
                 cacheRepository.save(cache);
                 log.info("✅ Indexed version_id={} [{} chars]", versionId, text.length());
             } else {
@@ -137,10 +164,29 @@ public class FullTextSearchService {
      * OCR-извлечение текста.
      */
     private String extractWithOCR(File file) throws TesseractException {
+        if (!ocrProperties.isEnabled()) {
+            log.debug("🔕 OCR disabled. Skipping OCR extraction for {}", file.getName());
+            return "";
+        }
+
         if (ocr == null) return "";
         log.debug("🧠 Running OCR for {}", file.getName());
         return ocr.doOCR(file);
     }
+
+    private LanguageResult detectLanguage(String text) {
+        if (languageDetector == null || text == null || text.isBlank()) {
+            return null;
+        }
+
+        try {
+            return languageDetector.detect(text); // без .copy()
+        } catch (Exception e) {
+            log.warn("⚠️ Language detection failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
 
     /**
      * Массовая переиндексация.

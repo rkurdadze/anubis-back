@@ -46,6 +46,8 @@ anubis:
     languages: ${ANUBIS_OCR_LANGUAGES:kat+eng+rus}  # грузинский, английский, русский
     psm: ${ANUBIS_OCR_PSM:3}                      # Page Segmentation Mode (3 = auto)
     oem: ${ANUBIS_OCR_OEM:1}                      # OCR Engine Mode (1 = LSTM)
+  language-detect:
+    enabled: ${ANUBIS_LANGUAGE_DETECT_ENABLED:true}
   tika:
     max-content-length: ${ANUBIS_TIKA_MAX_CONTENT_LENGTH:10485760}  # 10 MB
     parse-timeout-seconds: ${ANUBIS_TIKA_TIMEOUT:30}
