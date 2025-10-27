@@ -41,7 +41,7 @@ public class ObjectPropertyValueService {
 
     private void saveSingleValue(Long versionId, PropertyDef def, PropertyValueDto dto) {
         PropertyValue pv = new PropertyValue();
-        ObjectVersion versionRef = new ObjectVersion();
+        ObjectVersionEntity versionRef = new ObjectVersionEntity();
         versionRef.setId(versionId);
         pv.setObjectVersion(versionRef);
         pv.setPropertyDef(def);
@@ -70,7 +70,7 @@ public class ObjectPropertyValueService {
 
     private void saveMultiValue(Long versionId, PropertyDef def, PropertyValueDto dto) {
         PropertyValue pv = new PropertyValue();
-        ObjectVersion versionRef = new ObjectVersion();
+        ObjectVersionEntity versionRef = new ObjectVersionEntity();
         versionRef.setId(versionId);
         pv.setObjectVersion(versionRef);
         pv.setPropertyDef(def);

@@ -19,7 +19,7 @@ public class PropertyValue {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "object_version_id", nullable = false)
-    private ObjectVersion objectVersion;
+    private ObjectVersionEntity objectVersion;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "property_def_id", nullable = false)

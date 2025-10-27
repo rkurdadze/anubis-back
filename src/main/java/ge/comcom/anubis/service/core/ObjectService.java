@@ -189,9 +189,12 @@ public class ObjectService {
      * Removes both directions of a link if it exists (for BI links).
      */
     public void removeLink(Long sourceId, Long targetId, String role) {
+        LinkRole linkRole = linkRoleRepository.findByNameIgnoreCase(role)
+                .orElseThrow(() -> new EntityNotFoundException("Link role not found: " + role));
+
         List<ObjectLinkEntity> links = linkRepository.findBySource_IdOrTarget_Id(sourceId, targetId);
         links.stream()
-                .filter(l -> l.getRole().equals(role))
+                .filter(l -> l.getRole() != null && linkRole.getId().equals(l.getRole().getId()))
                 .forEach(linkRepository::delete);
 
         log.info("Removed all links for role='{}' between {} and {}", role, sourceId, targetId);

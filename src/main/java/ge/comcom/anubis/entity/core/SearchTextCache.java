@@ -24,7 +24,7 @@ public class SearchTextCache {
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "object_version_id", referencedColumnName = "version_id", insertable = false, updatable = false)
-    private ObjectVersion objectVersion;
+    private ObjectVersionEntity objectVersion;
 
     /**
      * Исходный текст, извлечённый из файла (Tika/OCR).

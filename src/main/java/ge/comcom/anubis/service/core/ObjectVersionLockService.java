@@ -72,8 +72,8 @@ public class ObjectVersionLockService {
         }
 
         version.setIsLocked(false);
-        version.setLockedBy(UserContext.getCurrentUser());
-        version.setLockedAt(Instant.now());
+        version.setLockedBy(null);
+        version.setLockedAt(null);
         versionRepository.save(version);
 
         log.info("Version {} unlocked by user {} (force={})", versionId, userId, force);

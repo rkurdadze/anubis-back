@@ -228,7 +228,7 @@ public class FullTextSearchService {
             String sql = """
         SELECT object_version_id
         FROM search_text_cache
-        WHERE extracted_text_vector @@ websearch_to_tsquery('multilang', :query)
+        WHERE extracted_text_vector @@ %s(:config::regconfig, :query)
         """.formatted(tsFunction);
 
             Query q = em.createNativeQuery(sql);
