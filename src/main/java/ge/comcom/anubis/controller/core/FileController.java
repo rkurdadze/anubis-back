@@ -41,6 +41,19 @@ public class FileController {
         return fileService.getFilesByObject(objectId);
     }
 
+    @Operation(
+            summary = "Get files for version",
+            description = "Returns all files associated with a specific object version.",
+            parameters = @Parameter(name = "versionId", description = "ID of the version", example = "18"),
+            responses = @ApiResponse(responseCode = "200", description = "Files retrieved successfully",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ObjectFileDto.class)))
+    )
+    @GetMapping("/version/{versionId}")
+    public List<ObjectFileDto> getFilesByVersion(@PathVariable Long versionId) {
+        return fileService.getFilesByVersion(versionId);
+    }
+
     // ================================================================
     // Download file
     // ================================================================
@@ -107,6 +120,35 @@ public class FileController {
 
         ObjectFileDto saved = fileService.saveFile(objectId, file);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    }
+
+    // ================================================================
+    // Link or update file metadata without uploading content
+    // ================================================================
+    @Operation(
+            summary = "Link file metadata to version",
+            description = "Creates or updates file metadata entry for the specified version without uploading binary content.",
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    description = "File metadata payload",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ObjectFileDto.class))
+            ),
+            responses = {
+                    @ApiResponse(responseCode = "201", description = "Metadata created"),
+                    @ApiResponse(responseCode = "200", description = "Metadata updated"),
+                    @ApiResponse(responseCode = "400", description = "Validation error")
+            }
+    )
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ObjectFileDto> linkFileMetadata(@RequestBody ObjectFileDto request) {
+        try {
+            FileService.FileLinkResult result = fileService.linkFileToVersion(request);
+            HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
+            return ResponseEntity.status(status).body(result.file());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     // ================================================================

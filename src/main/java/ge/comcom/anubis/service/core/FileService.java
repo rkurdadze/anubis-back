@@ -5,7 +5,6 @@ import ge.comcom.anubis.entity.core.FileStorageEntity;
 import ge.comcom.anubis.entity.core.ObjectFileEntity;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.enums.VersionChangeType;
-import ge.comcom.anubis.repository.core.FileStorageRepository;
 import ge.comcom.anubis.repository.core.ObjectFileRepository;
 import ge.comcom.anubis.service.storage.StorageStrategyRegistry;
 import ge.comcom.anubis.service.storage.VaultService;
@@ -49,11 +48,84 @@ public class FileService {
     }
 
     /**
+     * Returns all files attached to a specific object version.
+     */
+    public List<ObjectFileDto> getFilesByVersion(Long versionId) {
+        return fileRepository.findByVersion_Id(versionId).stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    /**
      * Retrieves a file entity by ID.
      */
     public ObjectFileEntity getFile(Long id) {
         return fileRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("File not found: " + id));
+    }
+
+    /**
+     * Creates or updates a logical link between a file metadata entry and a version.
+     * Allows clients to attach existing binary content or rename metadata without uploading new content.
+     */
+    @Transactional
+    public FileLinkResult linkFileToVersion(ObjectFileDto dto) {
+        if (dto.getVersionId() == null) {
+            throw new IllegalArgumentException("versionId is required to link file metadata");
+        }
+
+        ObjectVersionEntity targetVersion = versionService.getById(dto.getVersionId());
+        ObjectFileEntity entity;
+        boolean created;
+        VersionChangeType changeType;
+
+        if (dto.getId() != null) {
+            entity = getFile(dto.getId());
+            created = false;
+            changeType = VersionChangeType.FILE_UPDATED;
+        } else {
+            entity = new ObjectFileEntity();
+            created = true;
+            changeType = VersionChangeType.FILE_ADDED;
+        }
+
+        entity.setVersion(targetVersion);
+
+        if (dto.getFilename() != null && !dto.getFilename().isBlank()) {
+            entity.setFileName(dto.getFilename());
+        }
+
+        if (entity.getFileName() == null || entity.getFileName().isBlank()) {
+            throw new IllegalArgumentException("filename is required for file metadata");
+        }
+
+        if (dto.getMimeType() != null) {
+            entity.setMimeType(dto.getMimeType());
+        }
+
+        if (dto.getSize() != null) {
+            entity.setFileSize(dto.getSize());
+        }
+
+        if (entity.getStorage() == null) {
+            FileStorageEntity storage = vaultService.resolveStorageForObject(targetVersion.getObject());
+            if (storage != null) {
+                entity.setStorage(storage);
+            }
+        }
+
+        ObjectFileEntity saved = fileRepository.save(entity);
+
+        auditService.logAction(
+                targetVersion,
+                changeType,
+                UserContext.getCurrentUser().getId(),
+                created
+                        ? "Linked file metadata: " + saved.getFileName()
+                        : "Updated file metadata: " + saved.getFileName()
+        );
+
+        return new FileLinkResult(toDto(saved), created);
     }
 
     /**
@@ -142,15 +214,17 @@ public class FileService {
                 } catch (Exception deleteVerEx) {
                     log.error("Failed to delete orphaned version {}: {}", version.getId(), deleteVerEx.getMessage());
                 }
-            }
 
-            // Аудит ошибки
-            auditService.logAction(
-                    null, // version может быть null
-                    VersionChangeType.FILE_UPLOAD_FAILED,
-                    user.getId(),
-                    "File upload failed: " + file.getOriginalFilename() + " | Error: " + e.getMessage()
-            );
+                // Аудит ошибки сохраняем только если версия существует
+                auditService.logAction(
+                        version,
+                        VersionChangeType.FILE_UPLOAD_FAILED,
+                        user.getId(),
+                        "File upload failed: " + file.getOriginalFilename() + " | Error: " + e.getMessage()
+                );
+            } else {
+                log.warn("File upload failed before version creation for object {}: {}", objectId, e.getMessage());
+            }
 
             // Пробрасываем исключение — клиент должен знать
             throw new IOException("Failed to save file: " + e.getMessage(), e);
@@ -240,6 +314,8 @@ public class FileService {
                 .build();
     }
 
+
+    public record FileLinkResult(ObjectFileDto file, boolean created) { }
 
     public static class FileDownload {
         private final ObjectFileEntity file;

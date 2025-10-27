@@ -1,5 +1,6 @@
 package ge.comcom.anubis.service.core;
 
+import ge.comcom.anubis.dto.ObjectVersionAuditDto;
 import ge.comcom.anubis.entity.core.ObjectVersionAuditEntity;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.enums.VersionChangeType;
@@ -45,7 +46,9 @@ public class ObjectVersionAuditService {
 
         repository.save(record);
         log.info("Audit logged: {} for versionId={} by user={}",
-                changeType, version.getId(), modifiedBy);
+                changeType,
+                version != null ? version.getId() : null,
+                modifiedBy);
     }
 
     /**
@@ -65,5 +68,28 @@ public class ObjectVersionAuditService {
      */
     public List<ObjectVersionAuditEntity> getAuditByVersion(Long versionId) {
         return repository.findByVersion_IdOrderByModifiedAtDesc(versionId);
+    }
+
+    /**
+     * Returns audit log entries mapped to DTO for API responses.
+     */
+    public List<ObjectVersionAuditDto> getAuditDtoByVersion(Long versionId) {
+        return getAuditByVersion(versionId).stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    private ObjectVersionAuditDto toDto(ObjectVersionAuditEntity entity) {
+        return ObjectVersionAuditDto.builder()
+                .id(entity.getId())
+                .versionId(entity.getVersion() != null ? entity.getVersion().getId() : null)
+                .changeType(entity.getChangeType())
+                .modifiedBy(entity.getModifiedBy())
+                .modifiedAt(entity.getModifiedAt())
+                .changeSummary(entity.getChangeSummary())
+                .fieldChanged(entity.getFieldChanged())
+                .oldValue(entity.getOldValue())
+                .newValue(entity.getNewValue())
+                .build();
     }
 }
