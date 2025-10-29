@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /**
  * REST controller for managing object versions.
  * Provides endpoints for creating and deleting object versions.
@@ -61,5 +63,23 @@ public class ObjectVersionController {
 
         objectVersionService.deleteVersion(id);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Returns all versions for the specified object ordered by version number in descending order.
+     *
+     * @param objectId identifier of the object whose versions should be retrieved
+     * @return list of object version DTOs
+     */
+    @GetMapping("/object/{objectId}")
+    @Operation(
+            summary = "Get versions by object",
+            description = "Retrieves all versions for the given object identifier."
+    )
+    public List<ObjectVersionDto> getVersionsByObject(
+            @Parameter(description = "Identifier of the object", example = "42")
+            @PathVariable Long objectId) {
+
+        return objectVersionService.getVersionsByObject(objectId);
     }
 }

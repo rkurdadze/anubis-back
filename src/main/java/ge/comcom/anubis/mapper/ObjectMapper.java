@@ -52,8 +52,13 @@ public interface ObjectMapper {
 
     @Named("firstVersionCreatedBy")
     default String firstVersionCreatedBy(List<ObjectVersionEntity> versions) {
-        return versions == null || versions.isEmpty()
-                ? null
-                : versions.get(0).getCreatedBy().getUsername();
+        if (versions == null || versions.isEmpty()) {
+            return null;
+        }
+        ObjectVersionEntity first = versions.get(0);
+        if (first == null || first.getCreatedBy() == null) {
+            return null;
+        }
+        return first.getCreatedBy().getUsername();
     }
 }

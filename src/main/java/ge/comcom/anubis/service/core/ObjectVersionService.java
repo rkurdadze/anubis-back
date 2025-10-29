@@ -4,6 +4,7 @@ import ge.comcom.anubis.dto.ObjectVersionDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.entity.core.PropertyValue;
+import ge.comcom.anubis.entity.security.User;
 import ge.comcom.anubis.entity.meta.ClassProperty;
 import ge.comcom.anubis.entity.meta.PropertyDef;
 import ge.comcom.anubis.enums.VersionChangeType;
@@ -12,6 +13,7 @@ import ge.comcom.anubis.repository.core.ObjectRepository;
 import ge.comcom.anubis.repository.core.ObjectVersionRepository;
 import ge.comcom.anubis.repository.meta.ClassPropertyRepository;
 import ge.comcom.anubis.repository.meta.PropertyValueRepository;
+import ge.comcom.anubis.repository.security.UserRepository;
 import ge.comcom.anubis.util.UserContext;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +25,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
@@ -51,6 +54,7 @@ public class ObjectVersionService {
     private final ClassPropertyRepository classPropertyRepository;
     private final PropertyValueRepository propertyValueRepository;
     private final ObjectVersionMapper versionMapper;
+    private final UserRepository userRepository;
 
     /**
      * Saves or updates an object version, including full metadata validation.
@@ -70,8 +74,10 @@ public class ObjectVersionService {
                 entity.getVersionNumber());
 
         ObjectVersionEntity saved = versionRepository.save(entity);
-        auditService.logAction(saved, VersionChangeType.VERSION_SAVED, null,
-                "Version saved/updated by " + entity.getCreatedBy());
+        Long actorId = saved.getCreatedBy() != null ? saved.getCreatedBy().getId() : null;
+        String actorName = saved.getCreatedBy() != null ? saved.getCreatedBy().getUsername() : "unknown";
+        auditService.logAction(saved, VersionChangeType.VERSION_SAVED, actorId,
+                "Version saved/updated by " + actorName);
         return saved;
     }
 
@@ -87,7 +93,7 @@ public class ObjectVersionService {
         }
 
         Long classId = obj.getObjectClass().getId();
-        List<ClassProperty> bindings = classPropertyRepository.findAllByObjectClassIdOrderByDisplayOrderAsc(classId);
+        List<ClassProperty> bindings = classPropertyRepository.findAllByObjectClass_IdOrderByDisplayOrderAsc(classId);
         var values = resolvePropertyValues(version);
 
         if (version.getId() == null && values.isEmpty()) {
@@ -259,16 +265,52 @@ public class ObjectVersionService {
                 .object(object)
                 .versionNumber(newVersion)
                 .createdAt(Instant.now())
-                .createdBy(UserContext.getCurrentUser()) // TODO: replace with authenticated user
                 .comment(comment != null ? comment : "Auto-created version")
                 .build();
 
+        var currentUser = UserContext.getCurrentUser();
+        Optional<User> author = resolveOrProvisionUser(currentUser);
+        author.ifPresent(entity::setCreatedBy);
+
         ObjectVersionEntity saved = versionRepository.save(entity);
-        auditService.logAction(saved, VersionChangeType.VERSION_CREATED, null,
+        Long actorId = author.map(User::getId).orElse(null);
+        auditService.logAction(saved, VersionChangeType.VERSION_CREATED, actorId,
                 "Created new version " + newVersion);
 
         log.info("Auto-created version {} for object {}", newVersion, objectId);
         return saved;
+    }
+
+    private Optional<User> resolveOrProvisionUser(User contextUser) {
+        if (contextUser == null) {
+            return Optional.empty();
+        }
+
+        if (contextUser.getId() != null) {
+            Optional<User> byId = userRepository.findById(contextUser.getId());
+            if (byId.isPresent()) {
+                return byId;
+            }
+        }
+
+        String username = contextUser.getUsername();
+        if (username != null && !username.isBlank()) {
+            Optional<User> byUsername = userRepository.findByUsernameIgnoreCase(username);
+            if (byUsername.isPresent()) {
+                return byUsername;
+            }
+
+            User provisioned = User.builder()
+                    .username(username)
+                    .fullName(contextUser.getFullName())
+                    .build();
+            User saved = userRepository.save(provisioned);
+            log.info("Provisioned placeholder user '{}' with id {} for version tracking", saved.getUsername(), saved.getId());
+            return Optional.of(saved);
+        }
+
+        log.warn("Unable to resolve current user for version tracking: missing identifier and username");
+        return Optional.empty();
     }
 
     /**

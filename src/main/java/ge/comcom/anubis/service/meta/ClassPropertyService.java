@@ -4,6 +4,7 @@ import ge.comcom.anubis.dto.ClassPropertyDto;
 import ge.comcom.anubis.dto.ClassPropertyRequest;
 import ge.comcom.anubis.entity.core.ObjectClass;
 import ge.comcom.anubis.entity.meta.ClassProperty;
+import ge.comcom.anubis.entity.meta.ClassPropertyId;
 import ge.comcom.anubis.entity.meta.PropertyDef;
 import ge.comcom.anubis.repository.meta.ClassPropertyRepository;
 import ge.comcom.anubis.repository.meta.ClassRepository;
@@ -31,11 +32,14 @@ public class ClassPropertyService {
         PropertyDef prop = propertyDefRepository.findById(req.getPropertyDefId())
                 .orElseThrow(() -> new EntityNotFoundException("PropertyDef not found: id=" + req.getPropertyDefId()));
 
-        if (classPropertyRepository.existsByObjectClassIdAndPropertyDefId(req.getClassId(), req.getPropertyDefId())) {
+        ClassPropertyId key = new ClassPropertyId(req.getClassId(), req.getPropertyDefId());
+
+        if (classPropertyRepository.existsById(key)) {
             throw new IllegalArgumentException("This property is already assigned to the class");
         }
 
         ClassProperty entity = ClassProperty.builder()
+                .id(key)
                 .objectClass(objClass)
                 .propertyDef(prop)
                 .isReadonly(req.getIsReadonly() != null ? req.getIsReadonly() : false)
@@ -48,19 +52,27 @@ public class ClassPropertyService {
 
     @Transactional(readOnly = true)
     public List<ClassPropertyDto> listByClass(Long classId) {
-        return classPropertyRepository.findAllByObjectClassIdOrderByDisplayOrderAsc(classId)
+        return classPropertyRepository.findAllByObjectClass_IdOrderByDisplayOrderAsc(classId)
                 .stream().map(this::toDto).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public ClassPropertyDto get(Long id) {
-        return toDto(classPropertyRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("ClassProperty not found: id=" + id)));
+    public ClassPropertyDto get(Long classId, Long propertyDefId) {
+        ClassPropertyId key = new ClassPropertyId(classId, propertyDefId);
+        return toDto(classPropertyRepository.findById(key)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "ClassProperty not found: classId=" + classId + ", propertyDefId=" + propertyDefId)));
     }
 
-    public ClassPropertyDto update(Long id, ClassPropertyRequest req) {
-        ClassProperty e = classPropertyRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("ClassProperty not found: id=" + id));
+    public ClassPropertyDto update(Long classId, Long propertyDefId, ClassPropertyRequest req) {
+        if (!req.getClassId().equals(classId) || !req.getPropertyDefId().equals(propertyDefId)) {
+            throw new IllegalArgumentException("Class/property identifiers in payload must match the path parameters");
+        }
+
+        ClassPropertyId key = new ClassPropertyId(classId, propertyDefId);
+        ClassProperty e = classPropertyRepository.findById(key)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "ClassProperty not found: classId=" + classId + ", propertyDefId=" + propertyDefId));
 
         if (req.getIsReadonly() != null) e.setIsReadonly(req.getIsReadonly());
         if (req.getIsHidden() != null) e.setIsHidden(req.getIsHidden());
@@ -69,17 +81,18 @@ public class ClassPropertyService {
         return toDto(classPropertyRepository.save(e));
     }
 
-    public void delete(Long id) {
-        if (!classPropertyRepository.existsById(id))
-            throw new EntityNotFoundException("ClassProperty not found: id=" + id);
-        classPropertyRepository.deleteById(id);
+    public void delete(Long classId, Long propertyDefId) {
+        ClassPropertyId key = new ClassPropertyId(classId, propertyDefId);
+        if (!classPropertyRepository.existsById(key))
+            throw new EntityNotFoundException(
+                    "ClassProperty not found: classId=" + classId + ", propertyDefId=" + propertyDefId);
+        classPropertyRepository.deleteById(key);
     }
 
     private ClassPropertyDto toDto(ClassProperty e) {
         return ClassPropertyDto.builder()
-                .id(e.getId())
-                .classId(e.getObjectClass() != null ? e.getObjectClass().getId() : null)
-                .propertyDefId(e.getPropertyDef() != null ? e.getPropertyDef().getId() : null)
+                .classId(e.getClassId())
+                .propertyDefId(e.getPropertyDefId())
                 .isReadonly(e.getIsReadonly())
                 .isHidden(e.getIsHidden())
                 .displayOrder(e.getDisplayOrder())
@@ -87,9 +100,11 @@ public class ClassPropertyService {
                 .build();
     }
 
-    public void deactivate(Long id) {
-        ClassProperty e = classPropertyRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("ClassProperty not found: id=" + id));
+    public void deactivate(Long classId, Long propertyDefId) {
+        ClassPropertyId key = new ClassPropertyId(classId, propertyDefId);
+        ClassProperty e = classPropertyRepository.findById(key)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "ClassProperty not found: classId=" + classId + ", propertyDefId=" + propertyDefId));
         e.setIsActive(false);
         classPropertyRepository.save(e);
     }

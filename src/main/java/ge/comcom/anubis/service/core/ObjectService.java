@@ -44,6 +44,7 @@ public class ObjectService {
     private final ObjectClassRepository objectClassRepository;
     private final VaultRepository vaultRepository;
     private final ObjectMapper objectMapper;
+    private final ObjectVersionService objectVersionService;
 
     /**
      * Creates a new object.
@@ -56,7 +57,19 @@ public class ObjectService {
         applyRelations(entity, dto);
         entity.setIsDeleted(false);
         log.info("Creating new object '{}'", entity.getName());
-        return objectRepository.save(entity);
+
+        ObjectEntity saved = objectRepository.save(entity);
+
+        ObjectVersionEntity initialVersion = objectVersionService.createNewVersion(
+                saved.getId(),
+                "Initial version after object creation"
+        );
+
+        if (saved.getVersions() != null) {
+            saved.getVersions().add(initialVersion);
+        }
+
+        return saved;
     }
 
     /**
@@ -73,7 +86,18 @@ public class ObjectService {
         applyRelations(existing, dto);
 
         log.info("Updating object ID {}", id);
-        return objectRepository.save(existing);
+        ObjectEntity saved = objectRepository.save(existing);
+
+        ObjectVersionEntity newVersion = objectVersionService.createNewVersion(
+                saved.getId(),
+                "Auto-created version after object update"
+        );
+
+        if (saved.getVersions() != null) {
+            saved.getVersions().add(newVersion);
+        }
+
+        return saved;
     }
 
     /**
@@ -179,7 +203,7 @@ public class ObjectService {
         List<ObjectVersionEntity> versions = entity.getVersions();
         if (versions != null && !versions.isEmpty()) {
             ObjectVersionEntity firstVersion = versions.get(0);
-            if (firstVersion != null) {
+            if (firstVersion != null && firstVersion.getCreatedBy() != null) {
                 Hibernate.initialize(firstVersion.getCreatedBy());
             }
         }

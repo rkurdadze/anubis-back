@@ -21,6 +21,7 @@ public class ObjectVersionAuditEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "audit_id")
     @Comment("Unique audit record ID")
     private Long id;
 

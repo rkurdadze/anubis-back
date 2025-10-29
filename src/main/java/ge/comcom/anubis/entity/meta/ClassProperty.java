@@ -20,25 +20,24 @@ import lombok.*;
         )
 )
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "Class-property binding (property availability and UI hints)")
 public class ClassProperty implements ActivatableEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id") // artificial surrogate PK for easier referencing
-    @Schema(description = "Internal primary key (not in DB schema, generated for JPA convenience)")
-    private Long id;
+    @EmbeddedId
+    private ClassPropertyId id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @MapsId("classId")
     @JoinColumn(name = "class_id", nullable = false,
             foreignKey = @ForeignKey(name = "class_property_class_id_fkey"))
     @Schema(description = "Linked class")
     private ObjectClass objectClass;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @MapsId("propertyDefId")
     @JoinColumn(name = "property_def_id", nullable = false,
             foreignKey = @ForeignKey(name = "class_property_property_def_id_fkey"))
     @Schema(description = "Linked property definition")
@@ -58,8 +57,17 @@ public class ClassProperty implements ActivatableEntity {
     @Schema(description = "UI order for display", example = "10")
     private Integer displayOrder;
 
+    @Builder.Default
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
+
+    public Long getClassId() {
+        return id != null ? id.getClassId() : null;
+    }
+
+    public Long getPropertyDefId() {
+        return id != null ? id.getPropertyDefId() : null;
+    }
 
     @Override
     public Boolean getIsActive() { return isActive; }

@@ -31,28 +31,30 @@ public class ClassPropertyController {
         return service.listByClass(classId);
     }
 
-    @Operation(summary = "Get binding by ID")
-    @GetMapping("/{id}")
-    public ClassPropertyDto get(@PathVariable Long id) {
-        return service.get(id);
+    @Operation(summary = "Get binding by composite key")
+    @GetMapping("/{classId}/{propertyDefId}")
+    public ClassPropertyDto get(@PathVariable Long classId, @PathVariable Long propertyDefId) {
+        return service.get(classId, propertyDefId);
     }
 
     @Operation(summary = "Update binding")
-    @PutMapping("/{id}")
-    public ClassPropertyDto update(@PathVariable Long id, @Valid @RequestBody ClassPropertyRequest req) {
-        return service.update(id, req);
+    @PutMapping("/{classId}/{propertyDefId}")
+    public ClassPropertyDto update(@PathVariable Long classId,
+                                   @PathVariable Long propertyDefId,
+                                   @Valid @RequestBody ClassPropertyRequest req) {
+        return service.update(classId, propertyDefId, req);
     }
 
     @Operation(summary = "Delete binding")
-    @DeleteMapping("/{id}")
-    public void delete(@PathVariable Long id) {
-        service.delete(id);
+    @DeleteMapping("/{classId}/{propertyDefId}")
+    public void delete(@PathVariable Long classId, @PathVariable Long propertyDefId) {
+        service.delete(classId, propertyDefId);
     }
 
-    @PatchMapping("/{id}/deactivate")
+    @PatchMapping("/{classId}/{propertyDefId}/deactivate")
     @Operation(summary = "Деактивировать свойство класса (soft-delete)")
-    public ResponseEntity<Void> deactivate(@PathVariable Long id) {
-        service.deactivate(id);
+    public ResponseEntity<Void> deactivate(@PathVariable Long classId, @PathVariable Long propertyDefId) {
+        service.deactivate(classId, propertyDefId);
         return ResponseEntity.noContent().build();
     }
 
