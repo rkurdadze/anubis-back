@@ -5,6 +5,7 @@ import ge.comcom.anubis.entity.core.ObjectClass;
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.entity.core.ObjectLinkEntity;
 import ge.comcom.anubis.entity.core.ObjectType;
+import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.entity.core.VaultEntity;
 import ge.comcom.anubis.entity.security.User;
 import ge.comcom.anubis.enums.LinkDirection;
@@ -17,6 +18,7 @@ import ge.comcom.anubis.repository.core.VaultRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -107,7 +109,9 @@ public class ObjectService {
      */
     @Transactional(readOnly = true)
     public List<ObjectEntity> getAllActive() {
-        return objectRepository.findByIsDeletedFalse();
+        List<ObjectEntity> objects = objectRepository.findByIsDeletedFalse();
+        objects.forEach(this::initializeForRead);
+        return objects;
     }
 
     /**
@@ -115,8 +119,10 @@ public class ObjectService {
      */
     @Transactional(readOnly = true)
     public ObjectEntity getById(Long id) {
-        return objectRepository.findById(id)
+        ObjectEntity entity = objectRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Object not found: " + id));
+        initializeForRead(entity);
+        return entity;
     }
 
     /**
@@ -124,8 +130,10 @@ public class ObjectService {
      */
     @Transactional(readOnly = true)
     public ObjectEntity getWithLinks(Long id) {
-        return objectRepository.findByIdWithLinks(id)
+        ObjectEntity entity = objectRepository.findByIdWithLinks(id)
                 .orElseThrow(() -> new EntityNotFoundException("Object not found: " + id));
+        initializeForRead(entity);
+        return entity;
     }
 
     // === Делегирование в ObjectLinkService ===
@@ -164,6 +172,17 @@ public class ObjectService {
         entity.setObjectType(resolveType(dto.getTypeId()));
         entity.setObjectClass(resolveClass(dto.getClassId()));
         entity.setVault(resolveVault(dto.getVaultId()));
+    }
+
+    private void initializeForRead(ObjectEntity entity) {
+        Hibernate.initialize(entity.getVersions());
+        List<ObjectVersionEntity> versions = entity.getVersions();
+        if (versions != null && !versions.isEmpty()) {
+            ObjectVersionEntity firstVersion = versions.get(0);
+            if (firstVersion != null) {
+                Hibernate.initialize(firstVersion.getCreatedBy());
+            }
+        }
     }
 
     private ObjectType resolveType(Long typeId) {

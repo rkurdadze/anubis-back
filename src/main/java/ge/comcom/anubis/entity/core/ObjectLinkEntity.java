@@ -28,6 +28,7 @@ public class ObjectLinkEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "link_id")
     @Comment("Unique identifier of the link")
     private Long id;
 
