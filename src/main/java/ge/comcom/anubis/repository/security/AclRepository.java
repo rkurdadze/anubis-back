@@ -4,6 +4,8 @@ import ge.comcom.anubis.entity.security.Acl;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 /**
  * Repository for Access Control Lists (ACL).
  * Provides CRUD operations and helper methods for name-based lookup.
@@ -15,4 +17,6 @@ public interface AclRepository extends JpaRepository<Acl, Long> {
      * Checks if ACL with the given name already exists (case-insensitive).
      */
     boolean existsByNameIgnoreCase(String name);
+
+    Optional<Acl> findByNameIgnoreCase(String name);
 }
