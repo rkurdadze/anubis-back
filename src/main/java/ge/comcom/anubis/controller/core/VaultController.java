@@ -1,13 +1,11 @@
 package ge.comcom.anubis.controller.core;
 
-import ge.comcom.anubis.entity.core.VaultEntity;
-import ge.comcom.anubis.repository.core.VaultRepository;
-import ge.comcom.anubis.service.storage.VaultService;
+import ge.comcom.anubis.dto.VaultDto;
+import ge.comcom.anubis.dto.VaultRequest;
+import ge.comcom.anubis.service.storage.VaultAdminService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,109 +14,44 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * REST controller for managing {@link VaultEntity}.
- * <p>
- * Each vault represents a logical repository grouping.
- * Vaults can be linked to their own default {@code FileStorageEntity} (DB, FS, or S3).
- * This allows separation of data and custom storage configuration per vault.
+ * REST-контроллер для управления логическими vault'ами.
  */
 @RestController
 @RequestMapping("/api/v1/vaults")
 @RequiredArgsConstructor
-@Tag(name = "Vaults", description = "Vault management and storage configuration endpoints")
+@Tag(name = "Vaults", description = "Управление логическими хранилищами и их настройками")
 public class VaultController {
 
-    private final VaultRepository vaultRepository;
-    private final VaultService vaultService;
-
-    // ================================================================
-    // Get all active vaults
-    // ================================================================
-    @Operation(
-            summary = "Get all active vaults",
-            description = "Returns all vaults where is_active = true.",
-            responses = {
-                    @ApiResponse(
-                            responseCode = "200",
-                            description = "List of active vaults",
-                            content = @Content(
-                                    mediaType = "application/json",
-                                    schema = @Schema(implementation = VaultEntity.class)
-                            )
-                    )
-            }
-    )
-    @GetMapping("/active")
-    public List<VaultEntity> getActiveVaults() {
-        return vaultRepository.findByIsActiveTrue();
+    private final VaultAdminService vaultAdminService;
+    @GetMapping
+    @Operation(summary = "Список всех vault'ов")
+    public List<VaultDto> getAll() {
+        return vaultAdminService.findAll();
     }
 
-    // ================================================================
-    // Get vault by ID
-    // ================================================================
-    @Operation(summary = "Get vault by ID")
     @GetMapping("/{id}")
-    public ResponseEntity<VaultEntity> getVaultById(@PathVariable Long id) {
-        return vaultRepository.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    @Operation(summary = "Получить vault по идентификатору")
+    public VaultDto getById(@PathVariable Long id) {
+        return vaultAdminService.findById(id);
     }
 
-    // ================================================================
-    // Get vault by code
-    // ================================================================
-    @Operation(summary = "Get vault by unique code")
-    @GetMapping("/code/{code}")
-    public ResponseEntity<VaultEntity> getVaultByCode(@PathVariable String code) {
-        try {
-            VaultEntity vault = vaultService.getVaultByCode(code);
-            return ResponseEntity.ok(vault);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    // ================================================================
-    // Create new vault
-    // ================================================================
-    @Operation(summary = "Create a new vault")
     @PostMapping
-    public ResponseEntity<VaultEntity> createVault(@RequestBody VaultEntity vault) {
-        VaultEntity saved = vaultRepository.save(vault);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    @Operation(summary = "Создать новый vault")
+    public ResponseEntity<VaultDto> create(@Valid @RequestBody VaultRequest request) {
+        var created = vaultAdminService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
-    // ================================================================
-    // Update existing vault
-    // ================================================================
-    @Operation(summary = "Update an existing vault")
     @PutMapping("/{id}")
-    public ResponseEntity<VaultEntity> updateVault(
-            @PathVariable Long id,
-            @RequestBody VaultEntity updatedVault) {
-
-        return vaultRepository.findById(id)
-                .map(existing -> {
-                    existing.setName(updatedVault.getName());
-                    existing.setDescription(updatedVault.getDescription());
-                    existing.setCode(updatedVault.getCode());
-                    existing.setActive(updatedVault.isActive());
-                    existing.setDefaultStorage(updatedVault.getDefaultStorage());
-                    return ResponseEntity.ok(vaultRepository.save(existing));
-                })
-                .orElse(ResponseEntity.notFound().build());
+    @Operation(summary = "Обновить существующий vault")
+    public VaultDto update(@PathVariable Long id, @Valid @RequestBody VaultRequest request) {
+        return vaultAdminService.update(id, request);
     }
 
-    // ================================================================
-    // Delete vault
-    // ================================================================
-    @Operation(summary = "Delete a vault by ID")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteVault(@PathVariable Long id) {
-        if (!vaultRepository.existsById(id)) {
-            return ResponseEntity.notFound().build();
-        }
-        vaultRepository.deleteById(id);
+    @Operation(summary = "Удалить vault")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        vaultAdminService.delete(id);
         return ResponseEntity.noContent().build();
     }
 }

@@ -41,4 +41,10 @@ public interface VaultRepository extends JpaRepository<VaultEntity, Long> {
      * Finds all active vaults (is_active = true).
      */
     List<VaultEntity> findByIsActiveTrue();
+
+    boolean existsByCodeIgnoreCase(String code);
+
+    boolean existsByCodeIgnoreCaseAndIdNot(String code, Long id);
+
+    boolean existsByDefaultStorage_IdAndIsActiveTrue(Long storageId);
 }
