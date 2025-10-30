@@ -35,6 +35,25 @@ public class ObjectVersionAuditService {
                           VersionChangeType changeType,
                           Long modifiedBy,
                           String summary) {
+        logAction(version, changeType, modifiedBy, summary, null, null, null);
+    }
+
+    public void logFieldChange(ObjectVersionEntity version,
+                               String fieldName,
+                               String oldValue,
+                               String newValue,
+                               Long modifiedBy,
+                               String summary) {
+        logAction(version, VersionChangeType.FIELD_CHANGED, modifiedBy, summary, fieldName, oldValue, newValue);
+    }
+
+    private void logAction(ObjectVersionEntity version,
+                           VersionChangeType changeType,
+                           Long modifiedBy,
+                           String summary,
+                           String fieldChanged,
+                           String oldValue,
+                           String newValue) {
 
         ObjectVersionAuditEntity record = ObjectVersionAuditEntity.builder()
                 .version(version)
@@ -42,6 +61,9 @@ public class ObjectVersionAuditService {
                 .modifiedAt(Instant.now())
                 .modifiedBy(modifiedBy)
                 .changeSummary(summary)
+                .fieldChanged(fieldChanged)
+                .oldValue(oldValue)
+                .newValue(newValue)
                 .build();
 
         repository.save(record);
@@ -58,7 +80,7 @@ public class ObjectVersionAuditService {
         logAction(
                 version,
                 VersionChangeType.VERSION_CREATED,
-                UserContext.getCurrentUser().getId(),
+                UserContext.getCurrentUser() != null ? UserContext.getCurrentUser().getId() : null,
                 "Created new version " + version.getVersionNumber()
         );
     }

@@ -45,6 +45,7 @@ public class ObjectService {
     private final VaultRepository vaultRepository;
     private final ObjectMapper objectMapper;
     private final ObjectVersionService objectVersionService;
+    private final ObjectVersionAuditService auditService;
 
     /**
      * Creates a new object.
@@ -81,6 +82,7 @@ public class ObjectService {
      */
     public ObjectEntity update(Long id, ObjectDto dto) {
         ObjectEntity existing = getById(id);
+        ObjectStateSnapshot beforeUpdate = ObjectStateSnapshot.from(existing);
 
         objectMapper.updateEntityFromDto(dto, existing);
         applyRelations(existing, dto);
@@ -96,6 +98,8 @@ public class ObjectService {
         if (saved.getVersions() != null) {
             saved.getVersions().add(newVersion);
         }
+
+        logObjectFieldChanges(beforeUpdate, saved, newVersion);
 
         return saved;
     }
@@ -196,6 +200,168 @@ public class ObjectService {
         entity.setObjectType(resolveType(dto.getTypeId()));
         entity.setObjectClass(resolveClass(dto.getClassId()));
         entity.setVault(resolveVault(dto.getVaultId()));
+    }
+
+    private void logObjectFieldChanges(ObjectStateSnapshot before,
+                                       ObjectEntity after,
+                                       ObjectVersionEntity version) {
+        if (before == null || after == null || version == null) {
+            return;
+        }
+
+        Long actorId = version.getCreatedBy() != null ? version.getCreatedBy().getId() : null;
+
+        if (!equalsSafe(before.name(), after.getName())) {
+            auditService.logFieldChange(
+                    version,
+                    "name",
+                    before.name(),
+                    after.getName(),
+                    actorId,
+                    buildSummary("name", before.name(), after.getName())
+            );
+        }
+
+        if (!equalsSafe(before.typeId(), extractId(after.getObjectType()))) {
+            auditService.logFieldChange(
+                    version,
+                    "objectType",
+                    before.typeDisplay(),
+                    formatLookup(after.getObjectType()),
+                    actorId,
+                    buildSummary("objectType", before.typeDisplay(), formatLookup(after.getObjectType()))
+            );
+        }
+
+        if (!equalsSafe(before.classId(), extractId(after.getObjectClass()))) {
+            auditService.logFieldChange(
+                    version,
+                    "objectClass",
+                    before.classDisplay(),
+                    formatLookup(after.getObjectClass()),
+                    actorId,
+                    buildSummary("objectClass", before.classDisplay(), formatLookup(after.getObjectClass()))
+            );
+        }
+
+        if (!equalsSafe(before.vaultId(), extractId(after.getVault()))) {
+            auditService.logFieldChange(
+                    version,
+                    "vault",
+                    before.vaultDisplay(),
+                    formatLookup(after.getVault()),
+                    actorId,
+                    buildSummary("vault", before.vaultDisplay(), formatLookup(after.getVault()))
+            );
+        }
+    }
+
+    private boolean equalsSafe(Object left, Object right) {
+        if (left == null) {
+            return right == null;
+        }
+        return left.equals(right);
+    }
+
+    private Long extractId(ObjectType type) {
+        return type != null ? type.getId() : null;
+    }
+
+    private Long extractId(ObjectClass objectClass) {
+        return objectClass != null ? objectClass.getId() : null;
+    }
+
+    private Long extractId(VaultEntity vault) {
+        return vault != null ? vault.getId() : null;
+    }
+
+    private String formatLookup(ObjectType type) {
+        if (type == null) {
+            return null;
+        }
+        return formatDisplay(type.getName(), type.getId());
+    }
+
+    private String formatLookup(ObjectClass objectClass) {
+        if (objectClass == null) {
+            return null;
+        }
+        return formatDisplay(objectClass.getName(), objectClass.getId());
+    }
+
+    private String formatLookup(VaultEntity vault) {
+        if (vault == null) {
+            return null;
+        }
+        return formatDisplay(vault.getName(), vault.getId());
+    }
+
+    private String formatDisplay(String name, Long id) {
+        StringBuilder builder = new StringBuilder();
+        if (name != null && !name.isBlank()) {
+            builder.append(name.trim());
+        }
+        if (id != null) {
+            if (!builder.isEmpty()) {
+                builder.append(" (ID=").append(id).append(')');
+            } else {
+                builder.append("ID=").append(id);
+            }
+        }
+        return builder.isEmpty() ? null : builder.toString();
+    }
+
+    private String buildSummary(String field,
+                                String oldValue,
+                                String newValue) {
+        return String.format("Field '%s' changed from %s to %s",
+                field,
+                oldValue != null ? "'" + oldValue + "'" : "<null>",
+                newValue != null ? "'" + newValue + "'" : "<null>");
+    }
+
+    private record ObjectStateSnapshot(String name,
+                                       Long typeId,
+                                       String typeDisplay,
+                                       Long classId,
+                                       String classDisplay,
+                                       Long vaultId,
+                                       String vaultDisplay) {
+
+        static ObjectStateSnapshot from(ObjectEntity entity) {
+            if (entity == null) {
+                return null;
+            }
+
+            ObjectType type = entity.getObjectType();
+            ObjectClass objectClass = entity.getObjectClass();
+            VaultEntity vault = entity.getVault();
+
+            return new ObjectStateSnapshot(
+                    entity.getName(),
+                    type != null ? type.getId() : null,
+                    type != null ? safeLookupLabel(type.getName(), type.getId()) : null,
+                    objectClass != null ? objectClass.getId() : null,
+                    objectClass != null ? safeLookupLabel(objectClass.getName(), objectClass.getId()) : null,
+                    vault != null ? vault.getId() : null,
+                    vault != null ? safeLookupLabel(vault.getName(), vault.getId()) : null
+            );
+        }
+
+        private static String safeLookupLabel(String name, Long id) {
+            StringBuilder builder = new StringBuilder();
+            if (name != null && !name.isBlank()) {
+                builder.append(name.trim());
+            }
+            if (id != null) {
+                if (!builder.isEmpty()) {
+                    builder.append(" (ID=").append(id).append(')');
+                } else {
+                    builder.append("ID=").append(id);
+                }
+            }
+            return builder.isEmpty() ? null : builder.toString();
+        }
     }
 
     private void initializeForRead(ObjectEntity entity) {
