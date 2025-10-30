@@ -66,6 +66,24 @@ public class ObjectVersionController {
     }
 
     /**
+     * Возвращает конкретную версию по её идентификатору.
+     *
+     * @param id идентификатор версии
+     * @return DTO с данными указанной версии
+     */
+    @GetMapping("/{id}")
+    @Operation(
+            summary = "Get version by ID",
+            description = "Возвращает полную информацию по указанной версии объекта."
+    )
+    public ObjectVersionDto getById(
+            @Parameter(description = "Идентификатор версии", example = "10")
+            @PathVariable Long id) {
+
+        return objectVersionService.getVersionDto(id);
+    }
+
+    /**
      * Returns all versions for the specified object ordered by version number in descending order.
      *
      * @param objectId identifier of the object whose versions should be retrieved
