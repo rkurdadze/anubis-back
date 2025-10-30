@@ -22,7 +22,7 @@ public class PropertyDefRequest {
 
     @NotNull
     @Schema(description = "Data type (TEXT, NUMBER, DATE, BOOLEAN, LOOKUP, VALUELIST)", example = "VALUELIST")
-    private PropertyDataType dataType;
+    private String dataType;
 
     @Schema(description = "FK to object_type for LOOKUP type", example = "2")
     private Long refObjectTypeId;

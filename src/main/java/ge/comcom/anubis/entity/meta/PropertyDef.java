@@ -1,6 +1,7 @@
 package ge.comcom.anubis.entity.meta;
 
 import com.vladmihalcea.hibernate.type.json.JsonType;
+import com.vladmihalcea.hibernate.type.basic.PostgreSQLEnumType;
 import ge.comcom.anubis.entity.ActivatableEntity;
 import ge.comcom.anubis.entity.core.ObjectType;
 import ge.comcom.anubis.entity.core.ValueList;
@@ -8,7 +9,10 @@ import ge.comcom.anubis.enums.PropertyDataType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.Type;
+import org.hibernate.type.SqlTypes;
+
 
 import java.util.Map;
 
@@ -42,10 +46,16 @@ public class PropertyDef implements ActivatableEntity {
     private Map<String, String> captionI18n;
 
 
+//    @Enumerated(EnumType.STRING)
+//    @Column(name = "data_type", nullable = false, columnDefinition = "data_type_enum")
+//    @Schema(description = "Data type: TEXT, NUMBER, DATE, BOOLEAN, LOOKUP, VALUELIST", example = "TEXT")
+//    private PropertyDataType dataType;
+
     @Enumerated(EnumType.STRING)
-    @Column(name = "data_type", nullable = false)
-    @Schema(description = "Data type: TEXT, NUMBER, DATE, BOOLEAN, LOOKUP, VALUELIST", example = "TEXT")
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "data_type", nullable = false, columnDefinition = "data_type_enum")
     private PropertyDataType dataType;
+
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ref_object_type_id",

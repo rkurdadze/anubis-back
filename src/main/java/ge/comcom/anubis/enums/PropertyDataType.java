@@ -5,11 +5,10 @@ package ge.comcom.anubis.enums;
  * Similar to M-Files property definition types.
  */
 public enum PropertyDataType {
-    TEXT,          // plain text
-    INTEGER,       // numeric integer
-    FLOAT,         // decimal number
-    BOOLEAN,       // true / false
-    DATE,          // ISO date
-    VALUELIST,     // lookup to a ValueList
-    MULTI_VALUELIST // multi-select lookup
+    TEXT,       // plain text
+    NUMBER,     // numeric value (integer or decimal)
+    DATE,       // ISO date/time
+    BOOLEAN,    // true / false
+    LOOKUP,     // reference to another object
+    VALUELIST   // lookup to a ValueList
 }

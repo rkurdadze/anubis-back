@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -150,7 +151,7 @@ public class ObjectVersionService {
 
     /**
      * Strictly validates property value type according to its definition.
-     * Supports TEXT, INTEGER, FLOAT, BOOLEAN, DATE, VALUELIST, MULTI_VALUELIST.
+     * Supports TEXT, NUMBER, DATE, BOOLEAN, LOOKUP, VALUELIST (with optional multiselect).
      */
     private void validateValueType(PropertyDef def, String valueText) {
         if (valueText == null || valueText.isBlank()) return;
@@ -162,8 +163,7 @@ public class ObjectVersionService {
         try {
             switch (def.getDataType()) {
                 case TEXT -> { /* always valid */ }
-                case INTEGER -> Integer.parseInt(valueText);
-                case FLOAT -> Double.parseDouble(valueText);
+                case NUMBER -> new BigDecimal(valueText);
                 case BOOLEAN -> {
                     if (!valueText.equalsIgnoreCase("true") &&
                             !valueText.equalsIgnoreCase("false")) {
@@ -178,6 +178,9 @@ public class ObjectVersionService {
                         LocalDate.parse(valueText);
                     }
                 }
+                case LOOKUP -> {
+                    Long.parseLong(valueText);
+                }
                 case VALUELIST -> {
                     if (def.getValueList() == null) {
                         throw new IllegalStateException("Property '" + def.getName() + "' has no associated ValueList");
@@ -190,26 +193,6 @@ public class ObjectVersionService {
                         throw new IllegalStateException(String.format(
                                 "Value '%s' is not a valid item in ValueList '%s' for property '%s'",
                                 valueText, def.getValueList().getName(), def.getName()));
-                    }
-                }
-                case MULTI_VALUELIST -> {
-                    if (def.getValueList() == null) {
-                        throw new IllegalStateException("Property '" + def.getName() + "' has no associated ValueList");
-                    }
-                    String[] parts = valueText.split(",");
-                    for (String raw : parts) {
-                        String trimmed = raw.trim();
-                        if (trimmed.isEmpty()) continue;
-
-                        boolean exists = def.getValueList().getItems().stream()
-                                .anyMatch(item -> item.getIsActive() &&
-                                        item.getValue().equalsIgnoreCase(trimmed));
-
-                        if (!exists) {
-                            throw new IllegalStateException(String.format(
-                                    "Value '%s' is not valid in MultiValueList '%s' for property '%s'",
-                                    trimmed, def.getValueList().getName(), def.getName()));
-                        }
                     }
                 }
                 default -> throw new IllegalStateException("Unsupported data type: " + def.getDataType());

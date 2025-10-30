@@ -11,7 +11,7 @@ import java.util.Map;
 
 /**
  * Represents an item within a specific ValueList.
- * Used by properties with VALUELIST or MULTI_VALUELIST types.
+ * Used by properties with VALUELIST type (single or multi-select).
  */
 @Entity
 @Table(
