@@ -5,6 +5,7 @@ import ge.comcom.anubis.entity.core.FileStorageEntity;
 import ge.comcom.anubis.entity.core.ObjectFileEntity;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.enums.VersionChangeType;
+import ge.comcom.anubis.mapper.ObjectFileMapper;
 import ge.comcom.anubis.repository.core.ObjectFileRepository;
 import ge.comcom.anubis.service.storage.StorageStrategyRegistry;
 import ge.comcom.anubis.service.storage.VaultService;
@@ -37,13 +38,14 @@ public class FileService {
     private final ObjectVersionAuditService auditService;
     private final StorageStrategyRegistry strategyRegistry;
     private final FullTextSearchService fullTextSearchService;
+    private final ObjectFileMapper objectFileMapper;
 
     /**
      * Returns all files attached to a given object.
      */
     public List<ObjectFileDto> getFilesByObject(Long objectId) {
         return fileRepository.findByVersionObjectIdOrderByVersionCreatedAtDesc(objectId).stream()
-                .map(this::toDto)
+                .map(objectFileMapper::toDto)
                 .toList();
     }
 
@@ -52,7 +54,7 @@ public class FileService {
      */
     public List<ObjectFileDto> getFilesByVersion(Long versionId) {
         return fileRepository.findByVersion_Id(versionId).stream()
-                .map(this::toDto)
+                .map(objectFileMapper::toDto)
                 .toList();
     }
 
@@ -125,7 +127,7 @@ public class FileService {
                         : "Updated file metadata: " + saved.getFileName()
         );
 
-        return new FileLinkResult(toDto(saved), created);
+        return new FileLinkResult(objectFileMapper.toDto(saved), created);
     }
 
     /**
@@ -137,7 +139,7 @@ public class FileService {
         var user = UserContext.getCurrentUser();
 
         // 1. Получаем объект
-        var objectEntity = objectService.getObjectById(objectId);
+        var objectEntity = objectService.getById(objectId);
         if (objectEntity.getVault() == null) {
             throw new IllegalStateException("Object " + objectId + " has no vault assigned");
         }
@@ -192,7 +194,7 @@ public class FileService {
                     version.getVersionNumber(), vault.getName(), storage.getKind()
             );
 
-            return toDto(savedFile);
+            return objectFileMapper.toDto(savedFile);
 
         } catch (Exception e) {
             // 8. ОШИБКА: откат + аудит
@@ -290,7 +292,7 @@ public class FileService {
         );
 
         log.info("File '{}' updated by {}", file.getFileName(), user.getUsername());
-        return toDto(updated);
+        return objectFileMapper.toDto(updated);
     }
 
     private void triggerAsyncIndexing(ObjectFileEntity fileEntity) {
@@ -301,19 +303,6 @@ public class FileService {
             // Можно добавить аудит: "Indexing failed"
         }
     }
-
-    private ObjectFileDto toDto(ObjectFileEntity entity) {
-        return ObjectFileDto.builder()
-                .id(entity.getId())
-                .objectId(entity.getVersion() != null && entity.getVersion().getObject() != null
-                        ? entity.getVersion().getObject().getId() : null)
-                .versionId(entity.getVersion() != null ? entity.getVersion().getId() : null)
-                .filename(entity.getFileName())
-                .mimeType(entity.getMimeType())
-                .size(entity.getFileSize())
-                .build();
-    }
-
 
     public record FileLinkResult(ObjectFileDto file, boolean created) { }
 

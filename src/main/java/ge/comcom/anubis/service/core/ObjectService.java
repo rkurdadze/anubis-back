@@ -399,12 +399,4 @@ public class ObjectService {
                 .orElseThrow(() -> new EntityNotFoundException("Vault not found: " + vaultId));
     }
 
-    /**
-     * @deprecated Use {@link #getById(Long)} instead.
-     * @see #getById(Long)
-     */
-    @Deprecated
-    public ObjectEntity getObjectById(Long id) {
-        return getById(id);
-    }
 }

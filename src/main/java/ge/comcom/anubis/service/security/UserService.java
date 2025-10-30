@@ -6,6 +6,7 @@ import ge.comcom.anubis.entity.security.Group;
 import ge.comcom.anubis.entity.security.User;
 import ge.comcom.anubis.entity.security.UserGroup;
 import ge.comcom.anubis.entity.security.UserGroupId;
+import ge.comcom.anubis.mapper.security.UserMapper;
 import ge.comcom.anubis.repository.security.GroupRepository;
 import ge.comcom.anubis.repository.security.UserGroupRepository;
 import ge.comcom.anubis.repository.security.UserRepository;
@@ -18,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -28,12 +28,13 @@ public class UserService {
     private final UserRepository userRepository;
     private final GroupRepository groupRepository;
     private final UserGroupRepository userGroupRepository;
+    private final UserMapper userMapper;
 
     @Transactional(readOnly = true)
     public List<UserDto> list() {
         return userRepository.findAll(Sort.by(Sort.Direction.ASC, "username"))
                 .stream()
-                .map(this::toDto)
+                .map(userMapper::toDto)
                 .toList();
     }
 
@@ -41,7 +42,7 @@ public class UserService {
     public UserDto get(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("User not found: id=" + id));
-        return toDto(user);
+        return userMapper.toDto(user);
     }
 
     public UserDto create(UserRequest request) {
@@ -60,7 +61,7 @@ public class UserService {
         if (request.getGroupIds() != null) {
             syncGroups(saved, request.getGroupIds());
         }
-        return toDto(saved);
+        return userMapper.toDto(saved);
     }
 
     public UserDto update(Long id, UserRequest request) {
@@ -91,7 +92,7 @@ public class UserService {
             syncGroups(updated, request.getGroupIds());
         }
 
-        return toDto(updated);
+        return userMapper.toDto(updated);
     }
 
     public void delete(Long id) {
@@ -122,17 +123,4 @@ public class UserService {
         }
     }
 
-    private UserDto toDto(User user) {
-        Set<Long> groupIds = userGroupRepository.findByIdUserId(user.getId()).stream()
-                .map(UserGroup::getGroup)
-                .map(Group::getId)
-                .collect(Collectors.toCollection(HashSet::new));
-
-        return UserDto.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .fullName(user.getFullName())
-                .groupIds(groupIds)
-                .build();
-    }
 }

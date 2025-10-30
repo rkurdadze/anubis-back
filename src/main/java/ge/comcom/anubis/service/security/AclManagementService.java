@@ -7,6 +7,8 @@ import ge.comcom.anubis.dto.AclRequest;
 import ge.comcom.anubis.entity.security.Acl;
 import ge.comcom.anubis.entity.security.AclEntry;
 import ge.comcom.anubis.enums.GranteeType;
+import ge.comcom.anubis.mapper.security.AclEntryMapper;
+import ge.comcom.anubis.mapper.security.AclMapper;
 import ge.comcom.anubis.repository.security.AclEntryRepository;
 import ge.comcom.anubis.repository.security.AclRepository;
 import ge.comcom.anubis.repository.security.GroupRepository;
@@ -28,11 +30,13 @@ public class AclManagementService {
     private final AclEntryRepository aclEntryRepository;
     private final UserRepository userRepository;
     private final GroupRepository groupRepository;
+    private final AclMapper aclMapper;
+    private final AclEntryMapper aclEntryMapper;
 
     @Transactional(readOnly = true)
     public List<AclDto> list() {
         return aclRepository.findAll(Sort.by(Sort.Direction.ASC, "name")).stream()
-                .map(this::toDtoWithEntries)
+                .map(aclMapper::toDtoWithEntries)
                 .toList();
     }
 
@@ -40,7 +44,7 @@ public class AclManagementService {
     public AclDto get(Long id) {
         Acl acl = aclRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("ACL not found: id=" + id));
-        return toDtoWithEntries(acl);
+        return aclMapper.toDtoWithEntries(acl);
     }
 
     public AclDto create(AclRequest request) {
@@ -49,30 +53,36 @@ public class AclManagementService {
             throw new IllegalArgumentException("ACL name already exists: " + name);
         }
 
-        Acl acl = Acl.builder()
-                .name(name)
-                .build();
+        request.setName(name);
+
+        Acl acl = aclMapper.toEntity(request);
 
         Acl saved = aclRepository.save(acl);
-        return toDto(saved);
+        return aclMapper.toDto(saved);
     }
 
     public AclDto update(Long id, AclRequest request) {
         Acl acl = aclRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("ACL not found: id=" + id));
 
-        if (request.getName() != null && !request.getName().isBlank()) {
-            String name = request.getName().trim();
-            aclRepository.findByNameIgnoreCase(name)
-                    .filter(existing -> !existing.getId().equals(id))
-                    .ifPresent(existing -> {
-                        throw new IllegalArgumentException("ACL name already exists: " + name);
-                    });
-            acl.setName(name);
+        if (request.getName() != null) {
+            if (request.getName().isBlank()) {
+                request.setName(null);
+            } else {
+                String name = request.getName().trim();
+                aclRepository.findByNameIgnoreCase(name)
+                        .filter(existing -> !existing.getId().equals(id))
+                        .ifPresent(existing -> {
+                            throw new IllegalArgumentException("ACL name already exists: " + name);
+                        });
+                request.setName(name);
+            }
         }
 
+        aclMapper.updateEntityFromRequest(request, acl);
+
         Acl updated = aclRepository.save(acl);
-        return toDto(updated);
+        return aclMapper.toDto(updated);
     }
 
     public void delete(Long id) {
@@ -87,7 +97,7 @@ public class AclManagementService {
     public List<AclEntryDto> listEntries(Long aclId) {
         ensureAclExists(aclId);
         return aclEntryRepository.findByAcl_Id(aclId).stream()
-                .map(this::toEntryDto)
+                .map(aclEntryMapper::toDto)
                 .toList();
     }
 
@@ -95,7 +105,7 @@ public class AclManagementService {
     public AclEntryDto getEntry(Long aclId, Long entryId) {
         AclEntry entry = aclEntryRepository.findByIdAndAcl_Id(entryId, aclId)
                 .orElseThrow(() -> new EntityNotFoundException("ACL entry not found: id=" + entryId));
-        return toEntryDto(entry);
+        return aclEntryMapper.toDto(entry);
     }
 
     public AclEntryDto createEntry(Long aclId, AclEntryRequest request) {
@@ -108,18 +118,11 @@ public class AclManagementService {
             throw new IllegalArgumentException("ACL entry already exists for this grantee");
         }
 
-        AclEntry entry = AclEntry.builder()
-                .acl(acl)
-                .granteeType(request.getGranteeType())
-                .granteeId(request.getGranteeId())
-                .canRead(request.getCanRead() != null ? request.getCanRead() : Boolean.FALSE)
-                .canWrite(request.getCanWrite() != null ? request.getCanWrite() : Boolean.FALSE)
-                .canDelete(request.getCanDelete() != null ? request.getCanDelete() : Boolean.FALSE)
-                .canChangeAcl(request.getCanChangeAcl() != null ? request.getCanChangeAcl() : Boolean.FALSE)
-                .build();
+        AclEntry entry = aclEntryMapper.toEntity(request);
+        entry.setAcl(acl);
 
         AclEntry saved = aclEntryRepository.save(entry);
-        return toEntryDto(saved);
+        return aclEntryMapper.toDto(saved);
     }
 
     public AclEntryDto updateEntry(Long aclId, Long entryId, AclEntryRequest request) {
@@ -139,21 +142,10 @@ public class AclManagementService {
             entry.setGranteeId(request.getGranteeId());
         }
 
-        if (request.getCanRead() != null) {
-            entry.setCanRead(request.getCanRead());
-        }
-        if (request.getCanWrite() != null) {
-            entry.setCanWrite(request.getCanWrite());
-        }
-        if (request.getCanDelete() != null) {
-            entry.setCanDelete(request.getCanDelete());
-        }
-        if (request.getCanChangeAcl() != null) {
-            entry.setCanChangeAcl(request.getCanChangeAcl());
-        }
+        aclEntryMapper.updateEntityFromRequest(request, entry);
 
         AclEntry saved = aclEntryRepository.save(entry);
-        return toEntryDto(saved);
+        return aclEntryMapper.toDto(saved);
     }
 
     public void deleteEntry(Long aclId, Long entryId) {
@@ -172,38 +164,6 @@ public class AclManagementService {
         } else {
             throw new IllegalArgumentException("Unsupported grantee type: " + type);
         }
-    }
-
-    private AclDto toDto(Acl acl) {
-        return AclDto.builder()
-                .id(acl.getId())
-                .name(acl.getName())
-                .entries(List.of())
-                .build();
-    }
-
-    private AclDto toDtoWithEntries(Acl acl) {
-        List<AclEntryDto> entries = aclEntryRepository.findByAcl_Id(acl.getId()).stream()
-                .map(this::toEntryDto)
-                .toList();
-        return AclDto.builder()
-                .id(acl.getId())
-                .name(acl.getName())
-                .entries(entries)
-                .build();
-    }
-
-    private AclEntryDto toEntryDto(AclEntry entry) {
-        return AclEntryDto.builder()
-                .id(entry.getId())
-                .aclId(entry.getAcl().getId())
-                .granteeType(entry.getGranteeType())
-                .granteeId(entry.getGranteeId())
-                .canRead(entry.getCanRead())
-                .canWrite(entry.getCanWrite())
-                .canDelete(entry.getCanDelete())
-                .canChangeAcl(entry.getCanChangeAcl())
-                .build();
     }
 
     private void ensureAclExists(Long aclId) {

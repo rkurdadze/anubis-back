@@ -3,6 +3,7 @@ package ge.comcom.anubis.service.meta;
 import ge.comcom.anubis.dto.ValueListItemDto;
 import ge.comcom.anubis.entity.core.ValueList;
 import ge.comcom.anubis.entity.core.ValueListItem;
+import ge.comcom.anubis.mapper.meta.ValueListItemMapper;
 import ge.comcom.anubis.repository.meta.ValueListItemRepository;
 import ge.comcom.anubis.repository.meta.ValueListRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -24,6 +25,7 @@ public class ValueListItemService {
 
     private final ValueListRepository listRepository;
     private final ValueListItemRepository itemRepository;
+    private final ValueListItemMapper mapper;
 
     /**
      * Creates a new ValueListItem entry.
@@ -43,17 +45,11 @@ public class ValueListItemService {
                     .orElseThrow(() -> new EntityNotFoundException("Parent item not found"));
         }
 
-        ValueListItem entity = ValueListItem.builder()
-                .valueList(list)
-                .value(req.getValue() != null ? req.getValue().trim() : null)
-                .valueI18n(req.getValueI18n())
-                .sortOrder(req.getSortOrder())
-                .isActive(req.getIsActive() != null ? req.getIsActive() : true)
-                .parentItem(parent)
-                .externalCode(req.getExternalCode())
-                .build();
+        ValueListItem entity = mapper.toEntity(req);
+        entity.setValueList(list);
+        entity.setParentItem(parent);
 
-        return toDto(itemRepository.save(entity));
+        return mapper.toDto(itemRepository.save(entity));
     }
 
     /**
@@ -63,7 +59,7 @@ public class ValueListItemService {
     public List<ValueListItemDto> listByListId(Long valueListId) {
         return itemRepository.findAllByValueListIdOrderBySortOrderAsc(valueListId)
                 .stream()
-                .map(this::toDto)
+                .map(mapper::toDto)
                 .collect(Collectors.toList());
     }
 
@@ -72,7 +68,7 @@ public class ValueListItemService {
      */
     @Transactional(readOnly = true)
     public ValueListItemDto get(Long id) {
-        return toDto(itemRepository.findById(id)
+        return mapper.toDto(itemRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("ValueListItem not found: id=" + id)));
     }
 
@@ -87,20 +83,17 @@ public class ValueListItemService {
             String val = req.getValue().trim();
             if (itemRepository.existsByValueListIdAndValueIgnoreCaseAndIdNot(e.getValueList().getId(), val, id))
                 throw new IllegalArgumentException("Duplicate value in list");
-            e.setValue(val);
+            req.setValue(val);
         }
 
-        if (req.getValueI18n() != null) e.setValueI18n(req.getValueI18n());
-        if (req.getSortOrder() != null) e.setSortOrder(req.getSortOrder());
-        if (req.getIsActive() != null) e.setIsActive(req.getIsActive());
-        if (req.getExternalCode() != null) e.setExternalCode(req.getExternalCode());
+        mapper.updateEntityFromDto(req, e);
 
         if (req.getParentItemId() != null) {
             e.setParentItem(itemRepository.findById(req.getParentItemId())
                     .orElseThrow(() -> new EntityNotFoundException("Parent item not found")));
         }
 
-        return toDto(itemRepository.save(e));
+        return mapper.toDto(itemRepository.save(e));
     }
 
     /**
@@ -110,22 +103,6 @@ public class ValueListItemService {
         if (!itemRepository.existsById(id))
             throw new EntityNotFoundException("ValueListItem not found: id=" + id);
         itemRepository.deleteById(id);
-    }
-
-    /**
-     * Converts entity to DTO.
-     */
-    private ValueListItemDto toDto(ValueListItem e) {
-        return ValueListItemDto.builder()
-                .id(e.getId())
-                .valueListId(e.getValueList() != null ? e.getValueList().getId() : null)
-                .value(e.getValue())
-                .valueI18n(e.getValueI18n())
-                .sortOrder(e.getSortOrder())
-                .isActive(e.getIsActive())
-                .parentItemId(e.getParentItem() != null ? e.getParentItem().getId() : null)
-                .externalCode(e.getExternalCode())
-                .build();
     }
 
     public void deactivate(Long id) {

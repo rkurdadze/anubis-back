@@ -6,6 +6,7 @@ import ge.comcom.anubis.dto.ClassRequest;
 import ge.comcom.anubis.entity.core.ObjectClass;
 import ge.comcom.anubis.entity.core.ObjectType;
 import ge.comcom.anubis.entity.security.Acl;
+import ge.comcom.anubis.mapper.meta.ObjectClassMapper;
 import ge.comcom.anubis.repository.core.ObjectTypeRepository;
 import ge.comcom.anubis.repository.meta.ClassRepository;
 import ge.comcom.anubis.repository.security.AclRepository;
@@ -26,12 +27,14 @@ public class ClassService {
     private final ClassRepository classRepository;
     private final ObjectTypeRepository objectTypeRepository;
     private final AclRepository aclRepository;
+    private final ObjectClassMapper mapper;
 
     public ClassDto create(ClassRequest req) {
         ObjectType type = objectTypeRepository.findById(req.getObjectTypeId())
                 .orElseThrow(() -> new EntityNotFoundException("ObjectType not found: id=" + req.getObjectTypeId()));
 
-        if (classRepository.existsByObjectTypeIdAndNameIgnoreCase(req.getObjectTypeId(), req.getName())) {
+        String name = req.getName().trim();
+        if (classRepository.existsByObjectTypeIdAndNameIgnoreCase(req.getObjectTypeId(), name)) {
             throw new IllegalArgumentException("Class name already exists for this ObjectType");
         }
 
@@ -41,28 +44,25 @@ public class ClassService {
                     .orElseThrow(() -> new EntityNotFoundException("ACL not found: id=" + req.getAclId()));
         }
 
-        ObjectClass entity = ObjectClass.builder()
-                .objectType(type)
-                .acl(acl)
-                .name(req.getName().trim())
-                .description(req.getDescription())
-                .isActive(req.getIsActive() != null ? req.getIsActive() : Boolean.TRUE)
-                .build();
+        req.setName(name);
+        ObjectClass entity = mapper.toEntity(req);
+        entity.setObjectType(type);
+        entity.setAcl(acl);
 
         ObjectClass saved = classRepository.save(entity);
-        return toDto(saved);
+        return mapper.toDto(saved);
     }
 
     @Transactional(readOnly = true)
     public Page<ClassDto> list(Pageable pageable) {
-        return classRepository.findAll(pageable).map(this::toDto);
+        return classRepository.findAll(pageable).map(mapper::toDto);
     }
 
     @Transactional(readOnly = true)
     public ClassDto get(Long id) {
         ObjectClass entity = classRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Class not found: id=" + id));
-        return toDto(entity);
+        return mapper.toDto(entity);
     }
 
     public ClassDto update(Long id, ClassRequest req) {
@@ -70,17 +70,14 @@ public class ClassService {
                 .orElseThrow(() -> new EntityNotFoundException("Class not found: id=" + id));
 
         if (req.getName() != null && !req.getName().isBlank()) {
-            if (classRepository.existsByObjectTypeIdAndNameIgnoreCaseAndIdNot(entity.getObjectType().getId(), req.getName(), id)) {
+            String name = req.getName().trim();
+            if (classRepository.existsByObjectTypeIdAndNameIgnoreCaseAndIdNot(entity.getObjectType().getId(), name, id)) {
                 throw new IllegalArgumentException("Class name already exists for this ObjectType");
             }
-            entity.setName(req.getName().trim());
+            req.setName(name);
         }
 
-        if (req.getDescription() != null)
-            entity.setDescription(req.getDescription());
-
-        if (req.getIsActive() != null)
-            entity.setIsActive(req.getIsActive());
+        mapper.updateEntityFromRequest(req, entity);
 
         if (req.getAclId() != null) {
             Acl acl = aclRepository.findById(req.getAclId())
@@ -89,7 +86,7 @@ public class ClassService {
         }
 
         ObjectClass updated = classRepository.save(entity);
-        return toDto(updated);
+        return mapper.toDto(updated);
     }
 
     public void delete(Long id) {
@@ -99,14 +96,4 @@ public class ClassService {
         classRepository.deleteById(id);
     }
 
-    private ClassDto toDto(ObjectClass entity) {
-        return ClassDto.builder()
-                .id(entity.getId())
-                .objectTypeId(entity.getObjectType() != null ? entity.getObjectType().getId() : null)
-                .aclId(entity.getAcl() != null ? entity.getAcl().getId() : null)
-                .name(entity.getName())
-                .description(entity.getDescription())
-                .isActive(entity.getIsActive())
-                .build();
-    }
 }
