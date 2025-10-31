@@ -2,6 +2,7 @@ package ge.comcom.anubis.controller.core;
 
 import ge.comcom.anubis.dto.FileStorageDto;
 import ge.comcom.anubis.dto.FileStorageRequest;
+import ge.comcom.anubis.entity.core.FileStorageEntity;
 import ge.comcom.anubis.mapper.FileStorageMapper;
 import ge.comcom.anubis.service.storage.FileStorageAdminService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -50,7 +51,9 @@ public class FileStorageController {
     @PutMapping("/{id}")
     @Operation(summary = "Обновить конфигурацию хранилища")
     public FileStorageDto update(@PathVariable Long id, @Valid @RequestBody FileStorageRequest request) {
-        return fileStorageMapper.toDto(fileStorageAdminService.update(id, request));
+        FileStorageEntity entity = fileStorageAdminService.update(id, request);
+        FileStorageDto dto = fileStorageMapper.toDto(entity);
+        return dto;
     }
 
     @DeleteMapping("/{id}")

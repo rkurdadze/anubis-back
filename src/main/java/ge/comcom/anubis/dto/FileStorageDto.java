@@ -1,5 +1,6 @@
 package ge.comcom.anubis.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import ge.comcom.anubis.enums.StorageKindEnum;
 import lombok.Data;
 
@@ -18,6 +19,10 @@ public class FileStorageDto {
     private String endpoint;
     private String accessKey;
     private String secretKey;
-    private boolean isDefault;
-    private boolean isActive;
+
+    @JsonProperty("isDefault")
+    private boolean defaultStorage;
+
+    @JsonProperty("isActive")
+    private Boolean active;
 }

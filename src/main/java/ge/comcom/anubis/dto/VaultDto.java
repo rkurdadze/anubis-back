@@ -1,5 +1,6 @@
 package ge.comcom.anubis.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 /**
@@ -12,6 +13,9 @@ public class VaultDto {
     private String code;
     private String name;
     private String description;
-    private boolean isActive;
+
+    @JsonProperty("isActive")
+    private Boolean active;
+
     private FileStorageDto defaultStorage;
 }

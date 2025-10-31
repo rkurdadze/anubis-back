@@ -46,11 +46,6 @@ public class PropertyDef implements ActivatableEntity {
     private Map<String, String> captionI18n;
 
 
-//    @Enumerated(EnumType.STRING)
-//    @Column(name = "data_type", nullable = false, columnDefinition = "data_type_enum")
-//    @Schema(description = "Data type: TEXT, NUMBER, DATE, BOOLEAN, LOOKUP, VALUELIST", example = "TEXT")
-//    private PropertyDataType dataType;
-
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "data_type", nullable = false, columnDefinition = "data_type_enum")

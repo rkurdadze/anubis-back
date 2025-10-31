@@ -41,5 +41,5 @@ public class VaultEntity {
 
     /** Active flag */
     @Column(name = "is_active")
-    private boolean isActive = true;
+    private boolean active = true;
 }

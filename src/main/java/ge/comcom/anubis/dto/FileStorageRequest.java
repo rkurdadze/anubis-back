@@ -1,5 +1,6 @@
 package ge.comcom.anubis.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import ge.comcom.anubis.enums.StorageKindEnum;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -25,6 +26,9 @@ public class FileStorageRequest {
     private String accessKey;
     private String secretKey;
 
-    private boolean isDefault;
-    private boolean isActive = true;
+    @JsonProperty("isDefault")
+    private boolean defaultStorage;
+
+    @JsonProperty("isActive")
+    private boolean active;
 }

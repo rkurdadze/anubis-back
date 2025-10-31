@@ -45,7 +45,7 @@ public class VaultService {
      * Retrieves vault by unique code (case-insensitive).
      */
     public VaultEntity getVaultByCode(String code) {
-        return vaultRepository.findByCodeIgnoreCaseAndIsActiveTrue(code)
+        return vaultRepository.findByCodeIgnoreCaseAndActiveTrue(code)
                 .orElseThrow(() -> new IllegalArgumentException("Vault not found or inactive: " + code));
     }
 
@@ -73,7 +73,7 @@ public class VaultService {
         }
 
         // fallback: global default storage
-        return storageRepository.findByIsDefaultTrue()
+        return storageRepository.findByDefaultStorageTrue()
                 .orElseThrow(() -> new IllegalStateException("No default file storage configured"));
     }
 }

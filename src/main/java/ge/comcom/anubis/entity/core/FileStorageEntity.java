@@ -1,8 +1,11 @@
 package ge.comcom.anubis.entity.core;
 
+import ge.comcom.anubis.enums.PropertyDataType;
 import ge.comcom.anubis.enums.StorageKindEnum;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * Represents a physical file storage configuration.
@@ -28,6 +31,7 @@ public class FileStorageEntity {
 
     /** Storage type: DB / FS / S3 */
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "kind", nullable = false)
     private StorageKindEnum kind;
 
@@ -61,9 +65,10 @@ public class FileStorageEntity {
 
     /** Whether this is the system-wide default storage */
     @Column(name = "is_default")
-    private boolean isDefault = false;
+    private boolean defaultStorage = false;
 
     /** Whether this storage is currently active */
     @Column(name = "is_active")
-    private boolean isActive = true;
+    private boolean active = true;
+
 }

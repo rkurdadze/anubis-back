@@ -40,7 +40,7 @@ public class FileStorageAdminService {
         FileStorageEntity entity = new FileStorageEntity();
         applyRequest(entity, request);
 
-        if (entity.isDefault()) {
+        if (entity.isDefaultStorage()) {
             clearExistingDefault(null);
         }
 
@@ -52,21 +52,21 @@ public class FileStorageAdminService {
         validateRequest(request);
 
         FileStorageEntity entity = findById(id);
-        boolean wasDefault = entity.isDefault();
+        boolean wasDefault = entity.isDefaultStorage();
 
         applyRequest(entity, request);
 
-        if (entity.isDefault()) {
+        if (entity.isDefaultStorage()) {
             clearExistingDefault(id);
         }
 
-        if (!entity.isActive() && vaultRepository.existsByDefaultStorage_IdAndIsActiveTrue(id)) {
+        if (!entity.isActive() && vaultRepository.existsByDefaultStorage_IdAndActiveTrue(id)) {
             throw new IllegalStateException("Cannot deactivate storage which is used as default by active vaults");
         }
 
-        if (!entity.isDefault() && wasDefault) {
+        if (!entity.isDefaultStorage() && wasDefault) {
             // Никаких дополнительных действий, но проверим, что активные vault'ы не останутся без default storage
-            if (vaultRepository.existsByDefaultStorage_IdAndIsActiveTrue(id)) {
+            if (vaultRepository.existsByDefaultStorage_IdAndActiveTrue(id)) {
                 throw new IllegalStateException("Cannot remove default flag while active vaults rely on this storage");
             }
         }
@@ -77,15 +77,15 @@ public class FileStorageAdminService {
     @Transactional
     public void delete(Long id) {
         FileStorageEntity entity = findById(id);
-        if (vaultRepository.existsByDefaultStorage_IdAndIsActiveTrue(id)) {
+        if (vaultRepository.existsByDefaultStorage_IdAndActiveTrue(id)) {
             throw new IllegalStateException("Cannot delete storage assigned as default to active vaults");
         }
-        if (entity.isDefault()) {
+        if (entity.isDefaultStorage()) {
             // гарантируем, что не останется системного default после удаления
-            fileStorageRepository.findByIsDefaultTrue()
+            fileStorageRepository.findByDefaultStorageTrue()
                     .filter(existing -> existing.getId().equals(id))
                     .ifPresent(existing -> {
-                        existing.setDefault(false);
+                        existing.setDefaultStorage(false);
                         fileStorageRepository.save(existing);
                     });
         }
@@ -101,7 +101,7 @@ public class FileStorageAdminService {
         entity.setEndpoint(request.getEndpoint());
         entity.setAccessKey(request.getAccessKey());
         entity.setSecretKey(request.getSecretKey());
-        entity.setDefault(request.isDefault());
+        entity.setDefaultStorage(request.isDefaultStorage());
         entity.setActive(request.isActive());
     }
 
@@ -115,10 +115,10 @@ public class FileStorageAdminService {
     }
 
     private void clearExistingDefault(Long excludeId) {
-        fileStorageRepository.findByIsDefaultTrue()
+        fileStorageRepository.findByDefaultStorageTrue()
                 .filter(existing -> excludeId == null || !existing.getId().equals(excludeId))
                 .ifPresent(existing -> {
-                    existing.setDefault(false);
+                    existing.setDefaultStorage(false);
                     fileStorageRepository.save(existing);
                 });
     }

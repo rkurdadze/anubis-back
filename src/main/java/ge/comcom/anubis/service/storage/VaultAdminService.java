@@ -77,8 +77,9 @@ public class VaultAdminService {
         entity.setName(request.getName());
         entity.setDescription(request.getDescription());
 
-        Boolean requestedActive = request.getIsActive();
-        entity.setActive(requestedActive == null || requestedActive);
+        // Используем корректный геттер
+        boolean requestedActive = request.isActive();
+        entity.setActive(requestedActive);
 
         if (request.getDefaultStorageId() != null) {
             FileStorageEntity storage = fileStorageRepository.findById(request.getDefaultStorageId())
@@ -91,6 +92,7 @@ public class VaultAdminService {
             entity.setDefaultStorage(null);
         }
     }
+
 
     private void validateUniqueness(String code, Long currentId) {
         if (!StringUtils.hasText(code)) {

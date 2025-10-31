@@ -30,21 +30,21 @@ public interface VaultRepository extends JpaRepository<VaultEntity, Long> {
     /**
      * Finds an active vault by unique code (case-insensitive).
      */
-    Optional<VaultEntity> findByCodeIgnoreCaseAndIsActiveTrue(String code);
+    Optional<VaultEntity> findByCodeIgnoreCaseAndActiveTrue(String code);
 
     /**
      * Finds vault by ID only if active.
      */
-    Optional<VaultEntity> findByIdAndIsActiveTrue(Long id);
+    Optional<VaultEntity> findByIdAndActiveTrue(Long id);
 
     /**
      * Finds all active vaults (is_active = true).
      */
-    List<VaultEntity> findByIsActiveTrue();
+    List<VaultEntity> findByActiveTrue();
 
     boolean existsByCodeIgnoreCase(String code);
 
     boolean existsByCodeIgnoreCaseAndIdNot(String code, Long id);
 
-    boolean existsByDefaultStorage_IdAndIsActiveTrue(Long storageId);
+    boolean existsByDefaultStorage_IdAndActiveTrue(Long storageId);
 }

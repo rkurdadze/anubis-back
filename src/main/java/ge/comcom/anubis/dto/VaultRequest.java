@@ -1,5 +1,6 @@
 package ge.comcom.anubis.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
@@ -19,5 +20,6 @@ public class VaultRequest {
 
     private Long defaultStorageId;
 
-    private Boolean isActive = Boolean.TRUE;
+    @JsonProperty("isActive")
+    private boolean active;
 }
