@@ -3,13 +3,19 @@ package ge.comcom.anubis.service.security;
 import ge.comcom.anubis.dto.UserDto;
 import ge.comcom.anubis.dto.UserRequest;
 import ge.comcom.anubis.entity.security.Group;
+import ge.comcom.anubis.entity.security.Role;
 import ge.comcom.anubis.entity.security.User;
 import ge.comcom.anubis.entity.security.UserGroup;
 import ge.comcom.anubis.entity.security.UserGroupId;
+import ge.comcom.anubis.entity.security.UserRole;
+import ge.comcom.anubis.entity.security.UserRoleId;
+import ge.comcom.anubis.enums.UserStatus;
 import ge.comcom.anubis.mapper.security.UserMapper;
 import ge.comcom.anubis.repository.security.GroupRepository;
 import ge.comcom.anubis.repository.security.UserGroupRepository;
 import ge.comcom.anubis.repository.security.UserRepository;
+import ge.comcom.anubis.repository.security.UserRoleRepository;
+import ge.comcom.anubis.repository.security.RoleRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -28,6 +34,8 @@ public class UserService {
     private final UserRepository userRepository;
     private final GroupRepository groupRepository;
     private final UserGroupRepository userGroupRepository;
+    private final RoleRepository roleRepository;
+    private final UserRoleRepository userRoleRepository;
     private final UserMapper userMapper;
 
     @Transactional(readOnly = true)
@@ -51,15 +59,21 @@ public class UserService {
             throw new IllegalArgumentException("Username already exists: " + username);
         }
 
+        UserStatus status = request.getStatus() != null ? request.getStatus() : UserStatus.ACTIVE;
+
         User user = User.builder()
                 .username(username)
                 .fullName(request.getFullName())
                 .passwordHash(request.getPasswordHash())
+                .status(status)
                 .build();
 
         User saved = userRepository.save(user);
         if (request.getGroupIds() != null) {
             syncGroups(saved, request.getGroupIds());
+        }
+        if (request.getRoleIds() != null) {
+            syncRoles(saved, request.getRoleIds());
         }
         return userMapper.toDto(saved);
     }
@@ -86,10 +100,18 @@ public class UserService {
             user.setPasswordHash(request.getPasswordHash());
         }
 
+        if (request.getStatus() != null) {
+            user.setStatus(request.getStatus());
+        }
+
         User updated = userRepository.save(user);
 
         if (request.getGroupIds() != null) {
             syncGroups(updated, request.getGroupIds());
+        }
+
+        if (request.getRoleIds() != null) {
+            syncRoles(updated, request.getRoleIds());
         }
 
         return userMapper.toDto(updated);
@@ -100,6 +122,7 @@ public class UserService {
             throw new EntityNotFoundException("User not found: id=" + id);
         }
         userGroupRepository.deleteByIdUserId(id);
+        userRoleRepository.deleteByIdUserId(id);
         userRepository.deleteById(id);
     }
 
@@ -120,6 +143,26 @@ public class UserService {
                     .group(group)
                     .build();
             userGroupRepository.save(membership);
+        }
+    }
+
+    private void syncRoles(User user, Set<Long> roleIds) {
+        Set<Long> targetIds = roleIds == null ? Set.of() : new HashSet<>(roleIds);
+
+        List<Role> roles = targetIds.stream()
+                .map(roleId -> roleRepository.findById(roleId)
+                        .orElseThrow(() -> new EntityNotFoundException("Role not found: id=" + roleId)))
+                .toList();
+
+        userRoleRepository.deleteByIdUserId(user.getId());
+
+        for (Role role : roles) {
+            UserRole assignment = UserRole.builder()
+                    .id(new UserRoleId(user.getId(), role.getId()))
+                    .user(user)
+                    .role(role)
+                    .build();
+            userRoleRepository.save(assignment);
         }
     }
 

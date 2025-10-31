@@ -5,16 +5,13 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.Set;
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class GroupDto {
+public class RoleSummaryDto {
 
     private Long id;
     private String name;
-    private Set<Long> memberIds;
-    private Set<Long> roleIds;
+    private Boolean active;
 }

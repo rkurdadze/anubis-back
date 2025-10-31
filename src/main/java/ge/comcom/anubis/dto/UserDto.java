@@ -1,5 +1,6 @@
 package ge.comcom.anubis.dto;
 
+import ge.comcom.anubis.enums.UserStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,4 +18,6 @@ public class UserDto {
     private String username;
     private String fullName;
     private Set<Long> groupIds;
+    private Set<Long> roleIds;
+    private UserStatus status;
 }

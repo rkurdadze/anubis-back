@@ -1,21 +1,18 @@
 package ge.comcom.anubis.dto;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
-import java.util.Set;
-
 @Data
-public class GroupRequest {
+public class RoleRequest {
 
     @NotBlank
     @Size(max = 255)
     private String name;
 
-    private Set<Long> memberIds;
+    @Size(max = 1024)
+    private String description;
 
-    @JsonAlias({"roles", "roleIds"})
-    private Set<Long> roleIds;
+    private Boolean active;
 }

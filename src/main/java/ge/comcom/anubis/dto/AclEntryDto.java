@@ -20,4 +20,5 @@ public class AclEntryDto {
     private Boolean canWrite;
     private Boolean canDelete;
     private Boolean canChangeAcl;
+    private SecurityPrincipalDto principal;
 }

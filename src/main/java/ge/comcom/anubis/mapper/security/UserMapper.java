@@ -15,10 +15,12 @@ public abstract class UserMapper {
     private SecurityMappingHelper securityMappingHelper;
 
     @Mapping(target = "groupIds", ignore = true)
+    @Mapping(target = "roleIds", ignore = true)
     public abstract UserDto toDto(User entity);
 
     @AfterMapping
-    protected void fillGroups(User entity, @MappingTarget UserDto dto) {
+    protected void fillRelations(User entity, @MappingTarget UserDto dto) {
         dto.setGroupIds(securityMappingHelper.loadGroupIdsForUser(entity.getId()));
+        dto.setRoleIds(securityMappingHelper.loadRoleIdsForUser(entity.getId()));
     }
 }

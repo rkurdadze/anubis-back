@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "Defines whether ACL entry applies to a USER or a GROUP")
 public enum GranteeType {
     USER,
-    GROUP
+    GROUP,
+    ROLE
 }
 

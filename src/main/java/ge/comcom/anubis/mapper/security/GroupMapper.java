@@ -15,10 +15,12 @@ public abstract class GroupMapper {
     private SecurityMappingHelper securityMappingHelper;
 
     @Mapping(target = "memberIds", ignore = true)
+    @Mapping(target = "roleIds", ignore = true)
     public abstract GroupDto toDto(Group entity);
 
     @AfterMapping
     protected void fillMembers(Group entity, @MappingTarget GroupDto dto) {
         dto.setMemberIds(securityMappingHelper.loadMemberIdsForGroup(entity.getId()));
+        dto.setRoleIds(securityMappingHelper.loadRoleIdsForGroup(entity.getId()));
     }
 }

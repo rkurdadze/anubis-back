@@ -12,6 +12,7 @@ import ge.comcom.anubis.mapper.security.AclMapper;
 import ge.comcom.anubis.repository.security.AclEntryRepository;
 import ge.comcom.anubis.repository.security.AclRepository;
 import ge.comcom.anubis.repository.security.GroupRepository;
+import ge.comcom.anubis.repository.security.RoleRepository;
 import ge.comcom.anubis.repository.security.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class AclManagementService {
     private final AclEntryRepository aclEntryRepository;
     private final UserRepository userRepository;
     private final GroupRepository groupRepository;
+    private final RoleRepository roleRepository;
     private final AclMapper aclMapper;
     private final AclEntryMapper aclEntryMapper;
 
@@ -155,14 +157,16 @@ public class AclManagementService {
     }
 
     private void validateGrantee(GranteeType type, Long granteeId) {
-        if (type == GranteeType.USER) {
-            userRepository.findById(granteeId)
+        if (type == null) {
+            throw new IllegalArgumentException("Grantee type must be provided");
+        }
+        switch (type) {
+            case USER -> userRepository.findById(granteeId)
                     .orElseThrow(() -> new EntityNotFoundException("User not found: id=" + granteeId));
-        } else if (type == GranteeType.GROUP) {
-            groupRepository.findById(granteeId)
+            case GROUP -> groupRepository.findById(granteeId)
                     .orElseThrow(() -> new EntityNotFoundException("Group not found: id=" + granteeId));
-        } else {
-            throw new IllegalArgumentException("Unsupported grantee type: " + type);
+            case ROLE -> roleRepository.findById(granteeId)
+                    .orElseThrow(() -> new EntityNotFoundException("Role not found: id=" + granteeId));
         }
     }
 

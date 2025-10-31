@@ -1,6 +1,7 @@
 package ge.comcom.anubis.dto;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import ge.comcom.anubis.enums.UserStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -23,4 +24,10 @@ public class UserRequest {
     private String passwordHash;
 
     private Set<Long> groupIds;
+
+    @JsonAlias({"roles", "roleIds"})
+    private Set<Long> roleIds;
+
+    @JsonAlias({"status", "statusCode", "statusEnum"})
+    private UserStatus status;
 }

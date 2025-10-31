@@ -1,6 +1,7 @@
 package ge.comcom.anubis.util;
 
 import ge.comcom.anubis.entity.security.User;
+import ge.comcom.anubis.enums.UserStatus;
 import lombok.experimental.UtilityClass;
 
 /**
@@ -23,6 +24,7 @@ public class UserContext {
         user.setId(SYSTEM_USER_ID);
         user.setUsername(SYSTEM_USERNAME);
         user.setFullName(SYSTEM_FULLNAME);
+        user.setStatus(UserStatus.ACTIVE);
         return user;
     }
 }

@@ -4,6 +4,8 @@ import ge.comcom.anubis.enums.GranteeType;
 import jakarta.persistence.*;
 import lombok.*;
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * Represents a single ACL entry that defines access rights
@@ -31,6 +33,7 @@ public class AclEntry {
     private Acl acl;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "grantee_type", nullable = false)
     @Schema(description = "Type of grantee: USER or GROUP", example = "USER")
     private GranteeType granteeType;

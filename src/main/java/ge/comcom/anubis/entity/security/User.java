@@ -1,5 +1,6 @@
 package ge.comcom.anubis.entity.security;
 
+import ge.comcom.anubis.enums.UserStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Comment;
@@ -39,4 +40,10 @@ public class User {
     @Column(name = "password_hash")
     @Comment("Optional password hash (for non-SSO authentication)")
     private String passwordHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    @Comment("Account status (ACTIVE/INACTIVE/LOCKED)")
+    @Builder.Default
+    private UserStatus status = UserStatus.ACTIVE;
 }
