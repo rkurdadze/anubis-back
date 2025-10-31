@@ -1,7 +1,9 @@
 package ge.comcom.anubis.mapper;
 
 import ge.comcom.anubis.dto.ObjectDto;
+import ge.comcom.anubis.entity.core.ObjectClass;
 import ge.comcom.anubis.entity.core.ObjectEntity;
+import ge.comcom.anubis.entity.core.ObjectType;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import org.mapstruct.*;
 
@@ -14,15 +16,13 @@ public interface ObjectMapper {
 
     @Mapping(target = "typeId", source = "objectType.id")
     @Mapping(target = "classId", source = "objectClass.id")
-    @Mapping(target = "vaultId", source = "vault.id")
     @Mapping(target = "isDeleted", source = "isDeleted")
     @Mapping(target = "createdAt", source = "versions", qualifiedByName = "firstVersionCreatedAt")
     @Mapping(target = "createdBy", source = "versions", qualifiedByName = "firstVersionCreatedBy")
     ObjectDto toDto(ObjectEntity entity);
 
-    @Mapping(target = "objectType", ignore = true)
-    @Mapping(target = "objectClass", ignore = true)
-    @Mapping(target = "vault", ignore = true)
+    @Mapping(target = "objectType", source = "typeId", qualifiedByName = "mapTypeId")
+    @Mapping(target = "objectClass", source = "classId", qualifiedByName = "mapClassId")
     @Mapping(target = "versions", ignore = true)
     @Mapping(target = "outgoingLinks", ignore = true)
     @Mapping(target = "incomingLinks", ignore = true)
@@ -32,9 +32,8 @@ public interface ObjectMapper {
     ObjectEntity toEntity(ObjectDto dto);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
-    @Mapping(target = "objectType", ignore = true)
-    @Mapping(target = "objectClass", ignore = true)
-    @Mapping(target = "vault", ignore = true)
+    @Mapping(target = "objectType", source = "typeId", qualifiedByName = "mapTypeId")
+    @Mapping(target = "objectClass", source = "classId", qualifiedByName = "mapClassId")
     @Mapping(target = "versions", ignore = true)
     @Mapping(target = "outgoingLinks", ignore = true)
     @Mapping(target = "incomingLinks", ignore = true)
@@ -60,5 +59,25 @@ public interface ObjectMapper {
             return null;
         }
         return first.getCreatedBy().getUsername();
+    }
+
+    @Named("mapTypeId")
+    default ObjectType mapTypeId(Long typeId) {
+        if (typeId == null) {
+            return null;
+        }
+        ObjectType type = new ObjectType();
+        type.setId(typeId);
+        return type;
+    }
+
+    @Named("mapClassId")
+    default ObjectClass mapClassId(Long classId) {
+        if (classId == null) {
+            return null;
+        }
+        ObjectClass objectClass = new ObjectClass();
+        objectClass.setId(classId);
+        return objectClass;
     }
 }

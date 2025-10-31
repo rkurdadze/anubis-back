@@ -14,7 +14,6 @@ import ge.comcom.anubis.repository.core.ObjectLinkRepository;
 import ge.comcom.anubis.repository.core.ObjectRepository;
 import ge.comcom.anubis.repository.core.ObjectTypeRepository;
 import ge.comcom.anubis.repository.core.ObjectClassRepository;
-import ge.comcom.anubis.repository.core.VaultRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +41,6 @@ public class ObjectService {
     private final ObjectLinkRepository linkRepository; // Только для incoming links (если нет в linkService)
     private final ObjectTypeRepository objectTypeRepository;
     private final ObjectClassRepository objectClassRepository;
-    private final VaultRepository vaultRepository;
     private final ObjectMapper objectMapper;
     private final ObjectVersionService objectVersionService;
     private final ObjectVersionAuditService auditService;
@@ -197,9 +195,10 @@ public class ObjectService {
     }
 
     private void applyRelations(ObjectEntity entity, ObjectDto dto) {
-        entity.setObjectType(resolveType(dto.getTypeId()));
+        ObjectType type = resolveType(dto.getTypeId());
+        entity.setObjectType(type);
         entity.setObjectClass(resolveClass(dto.getClassId()));
-        entity.setVault(resolveVault(dto.getVaultId()));
+        ensureVaultConsistency(dto.getVaultId(), type);
     }
 
     private void logObjectFieldChanges(ObjectStateSnapshot before,
@@ -244,14 +243,15 @@ public class ObjectService {
             );
         }
 
-        if (!equalsSafe(before.vaultId(), extractId(after.getVault()))) {
+        VaultEntity newVault = extractVault(after.getObjectType());
+        if (!equalsSafe(before.vaultId(), extractId(newVault))) {
             auditService.logFieldChange(
                     version,
                     "vault",
                     before.vaultDisplay(),
-                    formatLookup(after.getVault()),
+                    formatLookup(newVault),
                     actorId,
-                    buildSummary("vault", before.vaultDisplay(), formatLookup(after.getVault()))
+                    buildSummary("vault", before.vaultDisplay(), formatLookup(newVault))
             );
         }
     }
@@ -335,7 +335,7 @@ public class ObjectService {
 
             ObjectType type = entity.getObjectType();
             ObjectClass objectClass = entity.getObjectClass();
-            VaultEntity vault = entity.getVault();
+            VaultEntity vault = type != null ? type.getVault() : null;
 
             return new ObjectStateSnapshot(
                     entity.getName(),
@@ -391,12 +391,22 @@ public class ObjectService {
                 .orElseThrow(() -> new EntityNotFoundException("Object class not found: " + classId));
     }
 
-    private VaultEntity resolveVault(Long vaultId) {
-        if (vaultId == null) {
-            return null;
+    private void ensureVaultConsistency(Long requestedVaultId, ObjectType type) {
+        VaultEntity vault = extractVault(type);
+        if (vault == null) {
+            throw new IllegalStateException("Object type has no vault configured: " + (type != null ? type.getId() : null));
         }
-        return vaultRepository.findById(vaultId)
-                .orElseThrow(() -> new EntityNotFoundException("Vault not found: " + vaultId));
+        if (requestedVaultId != null && !equalsSafe(requestedVaultId, vault.getId())) {
+            throw new IllegalArgumentException(String.format(
+                    "Vault mismatch: type %d belongs to vault %d",
+                    type.getId(),
+                    vault.getId()
+            ));
+        }
+    }
+
+    private VaultEntity extractVault(ObjectType type) {
+        return type != null ? type.getVault() : null;
     }
 
 }

@@ -22,6 +22,4 @@ public interface ObjectRepository extends JpaRepository<ObjectEntity, Long> {
     Optional<ObjectEntity> findByIdWithLinks(@Param("id") Long id);
 
     List<ObjectEntity> findByIsDeletedFalse();
-
-    boolean existsByVault_Id(Long vaultId);
 }

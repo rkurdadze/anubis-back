@@ -140,14 +140,15 @@ public class FileService {
 
         // 1. Получаем объект
         var objectEntity = objectService.getById(objectId);
-        if (objectEntity.getVault() == null) {
-            throw new IllegalStateException("Object " + objectId + " has no vault assigned");
+        var objectType = objectEntity.getObjectType();
+        if (objectType == null || objectType.getVault() == null) {
+            throw new IllegalStateException("Object type for object " + objectId + " has no vault assigned");
         }
 
         // 2. Получаем vault и storage
-        var vault = vaultService.getVaultById(objectEntity.getVault().getId());
+        var vault = vaultService.getVaultById(objectType.getVault().getId());
         if (vault == null) {
-            throw new IllegalStateException("Vault not found: " + objectEntity.getVault().getId());
+            throw new IllegalStateException("Vault not found: " + objectType.getVault().getId());
         }
 
         FileStorageEntity storage = vaultService.resolveStorageForObject(objectEntity);

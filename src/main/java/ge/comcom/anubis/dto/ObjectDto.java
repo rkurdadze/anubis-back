@@ -32,7 +32,7 @@ public class ObjectDto {
     @Positive
     private Long classId;
 
-    @Schema(description = "Vault ID", example = "2")
+    @Schema(description = "Vault ID resolved from object type", example = "2", accessMode = Schema.AccessMode.READ_ONLY)
     @Positive
     private Long vaultId;
 

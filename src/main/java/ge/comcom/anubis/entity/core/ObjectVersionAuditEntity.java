@@ -4,6 +4,8 @@ import ge.comcom.anubis.enums.VersionChangeType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Comment;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 
@@ -33,6 +35,7 @@ public class ObjectVersionAuditEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "change_type", nullable = false, length = 50)
     @Comment("Type of change performed")
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     private VersionChangeType changeType;
 
     @Column(name = "modified_by")

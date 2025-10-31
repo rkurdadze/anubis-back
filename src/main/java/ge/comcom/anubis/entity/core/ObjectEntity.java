@@ -5,6 +5,8 @@ import ge.comcom.anubis.entity.security.User;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Comment;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -42,6 +44,7 @@ public class ObjectEntity {
             nullable = false,
             foreignKey = @ForeignKey(name = "object_object_type_id_fkey"))
     @Comment("Reference to object type")
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     private ObjectType objectType;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -92,9 +95,4 @@ public class ObjectEntity {
     @Comment("Incoming object links (others -> this object)")
     private List<ObjectLinkEntity> incomingLinks = new ArrayList<>();
 
-
-    /** FK → vault.vault_id (defines which vault this object belongs to) */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "vault_id")
-    private VaultEntity vault;
 }

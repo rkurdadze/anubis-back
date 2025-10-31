@@ -60,8 +60,8 @@ public class VaultService {
             throw new IllegalArgumentException("Object cannot be null when resolving storage");
         }
 
-        if (object.getVault() != null) {
-            VaultEntity vault = object.getVault();
+        VaultEntity vault = object.getObjectType() != null ? object.getObjectType().getVault() : null;
+        if (vault != null) {
             FileStorageEntity storage = vault.getDefaultStorage();
 
             if (storage != null && Boolean.TRUE.equals(storage.isActive())) {

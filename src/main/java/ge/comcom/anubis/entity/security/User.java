@@ -4,6 +4,8 @@ import ge.comcom.anubis.enums.UserStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Comment;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * Represents a system user.
@@ -45,5 +47,6 @@ public class User {
     @Column(name = "status", nullable = false)
     @Comment("Account status (ACTIVE/INACTIVE/LOCKED)")
     @Builder.Default
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     private UserStatus status = UserStatus.ACTIVE;
 }

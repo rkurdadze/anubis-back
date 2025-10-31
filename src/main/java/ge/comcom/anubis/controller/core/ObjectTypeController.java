@@ -1,6 +1,7 @@
 package ge.comcom.anubis.controller.core;
 
-import ge.comcom.anubis.entity.core.ObjectType;
+import ge.comcom.anubis.dto.ObjectTypeDto;
+import ge.comcom.anubis.mapper.ObjectTypeMapper;
 import ge.comcom.anubis.service.core.ObjectTypeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -14,25 +15,29 @@ import java.util.List;
 public class ObjectTypeController {
 
     private final ObjectTypeService objectTypeService;
+    private final ObjectTypeMapper mapper;
 
     @GetMapping
-    public List<ObjectType> getAll() {
-        return objectTypeService.findAll();
+    public List<ObjectTypeDto> getAll() {
+        return objectTypeService.findAll()
+                .stream()
+                .map(mapper::toDto)
+                .toList();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ObjectType> getById(@PathVariable Long id) {
-        return ResponseEntity.ok(objectTypeService.findById(id));
+    public ResponseEntity<ObjectTypeDto> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(mapper.toDto(objectTypeService.findById(id)));
     }
 
     @PostMapping
-    public ResponseEntity<ObjectType> create(@RequestBody ObjectType objectType) {
-        return ResponseEntity.ok(objectTypeService.create(objectType));
+    public ResponseEntity<ObjectTypeDto> create(@RequestBody ObjectTypeDto dto) {
+        return ResponseEntity.ok(mapper.toDto(objectTypeService.create(mapper.toEntity(dto))));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<ObjectType> update(@PathVariable Long id, @RequestBody ObjectType objectType) {
-        return ResponseEntity.ok(objectTypeService.update(id, objectType));
+    public ResponseEntity<ObjectTypeDto> update(@PathVariable Long id, @RequestBody ObjectTypeDto dto) {
+        return ResponseEntity.ok(mapper.toDto(objectTypeService.update(id, mapper.toEntity(dto))));
     }
 
     @DeleteMapping("/{id}")

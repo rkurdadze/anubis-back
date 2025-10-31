@@ -6,7 +6,7 @@ import ge.comcom.anubis.entity.core.FileStorageEntity;
 import ge.comcom.anubis.entity.core.VaultEntity;
 import ge.comcom.anubis.mapper.VaultMapper;
 import ge.comcom.anubis.repository.core.FileStorageRepository;
-import ge.comcom.anubis.repository.core.ObjectRepository;
+import ge.comcom.anubis.repository.core.ObjectTypeRepository;
 import ge.comcom.anubis.repository.core.VaultRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +26,7 @@ public class VaultAdminService {
 
     private final VaultRepository vaultRepository;
     private final FileStorageRepository fileStorageRepository;
-    private final ObjectRepository objectRepository;
+    private final ObjectTypeRepository objectTypeRepository;
     private final VaultMapper vaultMapper;
 
     public List<VaultDto> findAll() {
@@ -66,7 +66,7 @@ public class VaultAdminService {
     public void delete(Long id) {
         VaultEntity entity = vaultRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Vault not found: " + id));
-        if (objectRepository.existsByVault_Id(id)) {
+        if (objectTypeRepository.existsByVault_Id(id)) {
             throw new IllegalStateException("Cannot delete vault that still contains objects");
         }
         vaultRepository.delete(entity);
