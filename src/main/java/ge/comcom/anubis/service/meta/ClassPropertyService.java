@@ -94,4 +94,14 @@ public class ClassPropertyService {
         classPropertyRepository.save(e);
     }
 
+    @Transactional
+    public void activate(Long classId, Long propertyDefId) {
+        ClassPropertyId key = new ClassPropertyId(classId, propertyDefId);
+        ClassProperty e = classPropertyRepository.findById(key)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "ClassProperty not found: classId=" + classId + ", propertyDefId=" + propertyDefId));
+        e.setIsActive(true);
+        classPropertyRepository.save(e);
+    }
+
 }

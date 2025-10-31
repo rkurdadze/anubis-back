@@ -4,49 +4,30 @@ import ge.comcom.anubis.dto.ClassPropertyDto;
 import ge.comcom.anubis.dto.ClassPropertyRequest;
 import ge.comcom.anubis.entity.meta.ClassProperty;
 import ge.comcom.anubis.entity.meta.ClassPropertyId;
-import org.springframework.stereotype.Component;
+import org.mapstruct.*;
 
-@Component
-public class ClassPropertyMapper {
+@Mapper(componentModel = "spring")
+public interface ClassPropertyMapper {
 
-    public ClassPropertyDto toDto(ClassProperty entity) {
-        if (entity == null) {
-            return null;
-        }
-        return ClassPropertyDto.builder()
-                .classId(entity.getClassId())
-                .propertyDefId(entity.getPropertyDefId())
-                .isReadonly(entity.getIsReadonly())
-                .isHidden(entity.getIsHidden())
-                .displayOrder(entity.getDisplayOrder())
-                .isActive(entity.getIsActive())
-                .build();
-    }
+    // --- Entity → DTO ---
+    @Mapping(target = "classId", source = "id.classId")
+    @Mapping(target = "propertyDefId", source = "id.propertyDefId")
+    @Mapping(target = "propertyName", source = "propertyDef.name") // ✅ добавляем имя свойства
+    ClassPropertyDto toDto(ClassProperty entity);
 
-    public ClassProperty toEntity(ClassPropertyRequest request) {
-        if (request == null) {
-            return null;
-        }
-        return ClassProperty.builder()
-                .id(new ClassPropertyId(request.getClassId(), request.getPropertyDefId()))
-                .isReadonly(request.getIsReadonly() != null ? request.getIsReadonly() : Boolean.FALSE)
-                .isHidden(request.getIsHidden() != null ? request.getIsHidden() : Boolean.FALSE)
-                .displayOrder(request.getDisplayOrder())
-                .build();
-    }
+    // --- Request → Entity ---
+    @Mapping(target = "id", expression = "java(new ClassPropertyId(request.getClassId(), request.getPropertyDefId()))")
+    @Mapping(target = "objectClass", ignore = true)
+    @Mapping(target = "propertyDef", ignore = true)
+    @Mapping(target = "isReadonly", expression = "java(request.getIsReadonly() != null ? request.getIsReadonly() : Boolean.FALSE)")
+    @Mapping(target = "isHidden", expression = "java(request.getIsHidden() != null ? request.getIsHidden() : Boolean.FALSE)")
+    @Mapping(target = "isActive", constant = "true")
+    ClassProperty toEntity(ClassPropertyRequest request);
 
-    public void updateEntityFromRequest(ClassPropertyRequest request, ClassProperty entity) {
-        if (request == null || entity == null) {
-            return;
-        }
-        if (request.getIsReadonly() != null) {
-            entity.setIsReadonly(request.getIsReadonly());
-        }
-        if (request.getIsHidden() != null) {
-            entity.setIsHidden(request.getIsHidden());
-        }
-        if (request.getDisplayOrder() != null) {
-            entity.setDisplayOrder(request.getDisplayOrder());
-        }
-    }
+    // --- Partial Update (PATCH) ---
+    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    @Mapping(target = "objectClass", ignore = true)
+    @Mapping(target = "propertyDef", ignore = true)
+    @Mapping(target = "id", ignore = true)
+    void updateEntityFromRequest(ClassPropertyRequest req, @MappingTarget ClassProperty entity);
 }

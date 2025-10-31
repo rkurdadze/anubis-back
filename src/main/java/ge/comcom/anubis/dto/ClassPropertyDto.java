@@ -15,5 +15,8 @@ public class ClassPropertyDto {
     private Boolean isHidden;
     private Integer displayOrder;
     private Boolean isActive; // ✅ добавляем флаг активности
+
+    @Schema(description = "Имя связанного свойства", example = "CustomerName")
+    private String propertyName; // ✅ новое поле
 }
 

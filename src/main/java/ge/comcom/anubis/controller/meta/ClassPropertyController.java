@@ -58,5 +58,13 @@ public class ClassPropertyController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{classId}/{propertyDefId}/activate")
+    @Operation(summary = "Активировать свойство класса (reactivate after soft-delete)")
+    public ResponseEntity<Void> activate(@PathVariable Long classId, @PathVariable Long propertyDefId) {
+        service.activate(classId, propertyDefId);
+        return ResponseEntity.noContent().build();
+    }
+
+
 }
 
