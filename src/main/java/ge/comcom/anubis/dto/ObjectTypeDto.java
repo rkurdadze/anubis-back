@@ -27,4 +27,6 @@ public class ObjectTypeDto {
 
     @Schema(description = "Vault name (read-only)", example = "Main Vault", accessMode = Schema.AccessMode.READ_ONLY)
     private String vaultName;
+
+    private Boolean vaultActive;
 }

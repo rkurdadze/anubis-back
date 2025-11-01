@@ -16,6 +16,7 @@ public interface ObjectTypeMapper {
     // ===============================
     @Mapping(source = "vault.id", target = "vaultId")
     @Mapping(source = "vault.name", target = "vaultName")
+    @Mapping(source = "vault.active", target = "vaultActive")
     ObjectTypeDto toDto(ObjectType entity);
 
     // ===============================
