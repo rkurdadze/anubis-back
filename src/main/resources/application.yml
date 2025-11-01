@@ -35,28 +35,35 @@ logging:
     root: INFO
     org.flywaydb: INFO
 
+
 # ==========================
 # 🔍 ANUBIS Custom Settings
 # ==========================
 anubis:
-  # --------------------------
-  # 🧠 OCR Configuration (Tesseract + Tika)
-  # --------------------------
   ocr:
-    enabled: true                                 # включить OCR
-    datapath: ${ANUBIS_OCR_DATAPATH:/usr/share/tesseract-ocr/5/tessdata}
-    languages: ${ANUBIS_OCR_LANGUAGES:kat+eng+rus}  # грузинский, английский, русский
-    psm: ${ANUBIS_OCR_PSM:3}                      # Page Segmentation Mode (3 = auto)
-    oem: ${ANUBIS_OCR_OEM:1}                      # OCR Engine Mode (1 = LSTM)
+    enabled: ${ANUBIS_OCR_ENABLED:true}
+    # Автоматически использует правильный путь в зависимости от ОС, не задаём дефолт Linux
+    datapath: ${TESSDATA_PREFIX:${ANUBIS_OCR_DATAPATH:}}
+    languages: ${ANUBIS_OCR_LANGUAGES:kat+eng+rus}
+    psm: ${ANUBIS_OCR_PSM:3}
+    oem: ${ANUBIS_OCR_OEM:1}
+
+
+  # --------------------------
+  # 🌐 Language Detection
+  # --------------------------
   language-detect:
     enabled: ${ANUBIS_LANGUAGE_DETECT_ENABLED:true}
+
+  # --------------------------
+  # 📄 Apache Tika Settings
+  # --------------------------
   tika:
     max-content-length: ${ANUBIS_TIKA_MAX_CONTENT_LENGTH:10485760}  # 10 MB
     parse-timeout-seconds: ${ANUBIS_TIKA_TIMEOUT:30}
 
   # --------------------------
   # 💾 File Storage Settings
-  # (для будущего расширения)
   # --------------------------
   storage:
     temp-dir: ${ANUBIS_STORAGE_TMP:/tmp/anubis}

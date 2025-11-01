@@ -23,18 +23,21 @@ import org.springframework.transaction.annotation.Transactional;
 import org.apache.tika.language.detect.LanguageDetector;
 import org.apache.tika.language.detect.LanguageResult;
 
+import javax.imageio.ImageIO;
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * Реализация полнотекстового поиска для Anubis.
  * Поддерживает:
- *  - Apache Tika для текстовых форматов (PDF, DOCX, XLSX, HTML и т.д.)
- *  - Tesseract OCR для изображений и сканов
- *  - Inline (BYTEA) и внешние файлы (FS/S3)
+ * - Apache Tika для текстовых форматов (PDF, DOCX, XLSX, HTML и т.д.)
+ * - Tesseract OCR для изображений и сканов
+ * - Inline (BYTEA) и внешние файлы (FS/S3)
  */
 @Service
 @RequiredArgsConstructor
@@ -55,32 +58,128 @@ public class FullTextSearchService {
 
     @PostConstruct
     private void initEngines() {
-        // Инициализация детектора языка
+        // 🔹 Language detection
         if (languageDetectProperties.isEnabled()) {
             try {
                 languageDetector = new OptimaizeLangDetector().loadModels();
                 log.info("Language detector initialized (Optimaize)");
             } catch (Exception e) {
                 languageDetector = null;
-                log.warn("Language detector failed to initialize: {}. Will skip language detection.", e.getMessage());
+                log.warn("Language detector failed to initialize: {}. Skipping.", e.getMessage());
             }
         } else {
             languageDetector = null;
             log.info("Language detection disabled in configuration.");
         }
 
-        // OCR — независимо от языка
-        if (ocrProperties.isEnabled()) {
+        // 🔹 OCR
+        if (!ocrProperties.isEnabled()) {
+            log.info("OCR disabled in configuration.");
+            return;
+        }
+
+        try {
+            String os = System.getProperty("os.name");
+            String osLower = os.toLowerCase();
+            boolean isContainer = Files.exists(Path.of("/.dockerenv"));
+            String tessdataPath;
+            String libPath = null;
+
+            log.info("Detected operating system: {}", os);
+
+            // --- macOS ---
+            if (osLower.contains("mac") || osLower.contains("darwin")) {
+                Path[] dataCandidates = {
+                        Path.of("/usr/local/share/tessdata"), // Intel mac
+                        Path.of("/opt/homebrew/share/tessdata"), // M1/M2 mac
+                        Path.of("/usr/share/tessdata")
+                };
+                tessdataPath = Stream.of(dataCandidates)
+                        .filter(Files::exists)
+                        .map(Path::toString)
+                        .findFirst()
+                        .orElse("/usr/local/share/tessdata");
+
+                Path[] libCandidates = {
+                        Path.of("/usr/local/lib/libtesseract.dylib"), // Intel mac
+                        Path.of("/opt/homebrew/lib/libtesseract.dylib"), // M1 mac
+                        Path.of("/usr/local/Cellar/tesseract/5.5.1/lib/libtesseract.dylib")
+                };
+                libPath = Stream.of(libCandidates)
+                        .filter(Files::exists)
+                        .map(path -> path.getParent().toString())
+                        .findFirst()
+                        .orElse(null);
+
+                log.info("✅ Detected macOS — using tessdata={} and library={}", tessdataPath, libPath);
+
+                if (libPath != null) {
+                    System.setProperty("jna.library.path", libPath);
+                    System.setProperty("DYLD_LIBRARY_PATH", libPath);
+                }
+                System.setProperty("TESSDATA_PREFIX", tessdataPath);
+            }
+
+            // --- Linux ---
+            else if (osLower.contains("linux")) {
+                tessdataPath = "/usr/share/tesseract-ocr/5/tessdata";
+                libPath = "/usr/lib/x86_64-linux-gnu";
+                System.setProperty("TESSDATA_PREFIX", tessdataPath);
+                System.setProperty("LD_LIBRARY_PATH", libPath);
+                System.setProperty("jna.library.path", libPath);
+                log.info("✅ Detected Linux — tessdata={}, lib={}", tessdataPath, libPath);
+            }
+
+            // --- Windows ---
+            else if (osLower.contains("win")) {
+                tessdataPath = "C:\\Program Files\\Tesseract-OCR\\tessdata";
+                libPath = "C:\\Program Files\\Tesseract-OCR";
+                System.setProperty("jna.library.path", libPath);
+                System.setProperty("TESSDATA_PREFIX", tessdataPath);
+                log.info("✅ Detected Windows — tessdata={}, lib={}", tessdataPath, libPath);
+            }
+
+            // --- Fallback ---
+            else {
+                tessdataPath = "/usr/share/tesseract-ocr/tessdata";
+                System.setProperty("TESSDATA_PREFIX", tessdataPath);
+                log.info("Using fallback TESSDATA_PREFIX = {}", tessdataPath);
+            }
+
+            // --- Создаём и настраиваем Tesseract ---
             ocr = new Tesseract();
-            ocr.setDatapath(ocrProperties.getDatapath());
+            ocr.setDatapath(tessdataPath);
             ocr.setLanguage(ocrProperties.getLanguages());
             ocr.setPageSegMode(ocrProperties.getPsm());
             ocr.setOcrEngineMode(ocrProperties.getOem());
-            log.info("OCR initialized: path={}, languages={}",
-                    ocrProperties.getDatapath(), ocrProperties.getLanguages());
-        } else {
-            log.info("OCR disabled in configuration.");
+
+            // --- Проверяем языковые файлы ---
+            String[] langs = ocrProperties.getLanguages().split("\\+");
+            for (String lang : langs) {
+                Path langFile = Path.of(tessdataPath, lang.trim() + ".traineddata");
+                if (!Files.exists(langFile)) {
+                    log.warn("⚠️ Missing traineddata for '{}'. Try: brew install tesseract-lang", lang);
+                } else {
+                    log.debug("✅ Found traineddata for '{}'", lang);
+                }
+            }
+
+            log.info("OCR initialized: path={}, languages={}, os={}, docker={}, lib={}",
+                    tessdataPath, ocrProperties.getLanguages(), os, isContainer, libPath);
+
+        } catch (Exception e) {
+            log.error("❌ OCR initialization failed: {}", e.getMessage(), e);
+            ocr = null;
         }
+    }
+
+
+
+
+    @PostConstruct
+    public void testImageReaders() {
+        String[] readers = ImageIO.getReaderFormatNames();
+        log.info("🧩 ImageIO readers available: {}", String.join(", ", readers));
     }
 
 
@@ -103,14 +202,21 @@ public class FullTextSearchService {
         }
 
         try {
-            String mime = tika.detect(localFile);
+            String mime = detectMimeType(localFile);
             String text;
 
-            if (mime.startsWith("image/") || mime.equals("application/pdf")) {
-                text = extractWithOCR(localFile);
+            if (mime != null && (mime.startsWith("image/") || mime.equals("application/pdf"))) {
+                if (fileEntity.isInline() && fileEntity.getContent() != null) {
+                    try (InputStream in = new ByteArrayInputStream(fileEntity.getContent())) {
+                        text = extractWithOCR(in, fileEntity.getFileName());
+                    }
+                } else {
+                    text = extractWithOCR(localFile);
+                }
             } else {
-                text = tika.parseToString(localFile);
+                text = parseToString(localFile);
             }
+
 
             if (text == null || text.isBlank()) {
                 log.warn("No text extracted for version_id={}", versionId);
@@ -142,13 +248,17 @@ public class FullTextSearchService {
                     versionId, text.length(),
                     cache.getDetectedLanguage() != null ? cache.getDetectedLanguage() : "none");
 
+        } catch (NoSuchMethodError e) {
+            log.error("Tika runtime dependencies are misaligned: {}. Skipping indexing for file {}.",
+                    e.getMessage(), fileEntity.getId(), e);
         } catch (IOException | TikaException | TesseractException e) {
             log.error("Failed to extract text for file {}: {}", fileEntity.getId(), e.getMessage(), e);
         } finally {
             if (fileEntity.isInline() && localFile != null) {
                 try {
                     Files.deleteIfExists(localFile.toPath());
-                } catch (IOException ignored) {}
+                } catch (IOException ignored) {
+                }
             }
         }
     }
@@ -159,7 +269,15 @@ public class FullTextSearchService {
     private File getLocalFile(ObjectFileEntity fileEntity) {
         try {
             if (fileEntity.isInline() && fileEntity.getContent() != null) {
-                File tmp = File.createTempFile("anubis-inline-", ".bin");
+                // Определяем расширение из имени файла, если есть
+                String ext = "jpg";
+                String originalName = fileEntity.getFileName();
+                if (originalName != null && originalName.contains(".")) {
+                    ext = originalName.substring(originalName.lastIndexOf('.') + 1);
+                }
+
+                // Создаём временный файл с корректным расширением
+                File tmp = File.createTempFile("anubis-inline-", "." + ext);
                 Files.write(tmp.toPath(), fileEntity.getContent());
                 return tmp;
             } else if (fileEntity.getExternalFilePath() != null) {
@@ -170,6 +288,7 @@ public class FullTextSearchService {
         }
         return null;
     }
+
 
     /**
      * OCR-извлечение текста.
@@ -185,6 +304,30 @@ public class FullTextSearchService {
         return ocr.doOCR(file);
     }
 
+    private String extractWithOCR(InputStream inputStream, String originalFileName) throws IOException, TesseractException {
+        String ext = originalFileName != null && originalFileName.contains(".")
+                ? originalFileName.substring(originalFileName.lastIndexOf('.') + 1)
+                : "jpg";
+
+        Path tempFile = Files.createTempFile("ocr-", "." + ext);
+        try (OutputStream out = Files.newOutputStream(tempFile)) {
+            inputStream.transferTo(out);
+        }
+
+        try {
+            if (ocr == null) {
+                log.warn("⚠️ OCR is not initialized, skipping OCR for {}", originalFileName);
+                return "";
+            }
+
+            log.debug("🧠 Running OCR for {} (temp file: {})", originalFileName, tempFile);
+            return ocr.doOCR(tempFile.toFile());
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
+    }
+
+
     private LanguageResult detectLanguage(String text) {
         if (!languageDetectProperties.isEnabled() || languageDetector == null || text == null || text.isBlank()) {
             return null;
@@ -195,6 +338,31 @@ public class FullTextSearchService {
         } catch (Exception e) {
             log.warn("Language detection failed: {}", e.getMessage());
             return null;
+        }
+    }
+
+    private String detectMimeType(File file) throws IOException {
+        try {
+            return tika.detect(file);
+        } catch (NoSuchMethodError e) {
+            log.warn("Tika detect failed due to missing SystemProperties#getUserName: {}. Falling back to NIO probe for {}.",
+                    e.getMessage(), file.getName());
+            try {
+                return Files.probeContentType(file.toPath());
+            } catch (IOException ioException) {
+                log.warn("Fallback MIME detection failed for {}: {}", file.getName(), ioException.getMessage());
+                throw ioException;
+            }
+        }
+    }
+
+    private String parseToString(File file) throws IOException, TikaException {
+        try {
+            return tika.parseToString(file);
+        } catch (NoSuchMethodError e) {
+            log.error("Tika parse failed due to missing SystemProperties#getUserName: {}. Returning empty text for {}.",
+                    e.getMessage(), file.getName());
+            return "";
         }
     }
 
@@ -237,10 +405,10 @@ public class FullTextSearchService {
             String config = "multilang";
 
             String sql = """
-        SELECT object_version_id
-        FROM search_text_cache
-        WHERE extracted_text_vector @@ %s(:config::regconfig, :query)
-        """.formatted(tsFunction);
+                    SELECT object_version_id
+                    FROM search_text_cache
+                    WHERE extracted_text_vector @@ %s(:config::regconfig, :query)
+                    """.formatted(tsFunction);
 
             Query q = em.createNativeQuery(sql);
             q.setParameter("config", config);

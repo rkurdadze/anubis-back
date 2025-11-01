@@ -2,7 +2,8 @@ package ge.comcom.anubis.entity.core;
 
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.Instant;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * Represents a single file attached to a specific object version.
@@ -40,6 +41,7 @@ public class ObjectFileEntity {
 
     /** Binary file content, if stored inline in DB */
     @Lob
+    @JdbcTypeCode(SqlTypes.BINARY)
     @Column(name = "file_data")
     private byte[] content;
 

@@ -43,6 +43,7 @@ public class FileService {
     /**
      * Returns all files attached to a given object.
      */
+    @Transactional(readOnly = true)
     public List<ObjectFileDto> getFilesByObject(Long objectId) {
         return fileRepository.findByVersionObjectIdOrderByVersionCreatedAtDesc(objectId).stream()
                 .map(objectFileMapper::toDto)
@@ -52,6 +53,7 @@ public class FileService {
     /**
      * Returns all files attached to a specific object version.
      */
+    @Transactional(readOnly = true)
     public List<ObjectFileDto> getFilesByVersion(Long versionId) {
         return fileRepository.findByVersion_Id(versionId).stream()
                 .map(objectFileMapper::toDto)
