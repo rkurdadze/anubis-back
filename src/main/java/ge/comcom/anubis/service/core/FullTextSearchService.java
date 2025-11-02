@@ -25,10 +25,13 @@ import org.apache.tika.language.detect.LanguageResult;
 
 import javax.imageio.ImageIO;
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -43,6 +46,9 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 @Slf4j
 public class FullTextSearchService {
+
+    private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "bmp", "tif", "tiff", "heic", "webp");
+    private static final Set<String> PDF_EXTENSIONS = Set.of("pdf");
 
     private final ObjectFileRepository fileRepository;
     private final SearchTextCacheRepository cacheRepository;
@@ -82,16 +88,16 @@ public class FullTextSearchService {
             String os = System.getProperty("os.name");
             String osLower = os.toLowerCase();
             boolean isContainer = Files.exists(Path.of("/.dockerenv"));
-            String tessdataPath;
+            String configuredDataPath = trimToNull(ocrProperties.getDatapath());
+            String tessdataPath = null;
             String libPath = null;
 
             log.info("Detected operating system: {}", os);
 
-            // --- macOS ---
             if (osLower.contains("mac") || osLower.contains("darwin")) {
                 Path[] dataCandidates = {
-                        Path.of("/usr/local/share/tessdata"), // Intel mac
-                        Path.of("/opt/homebrew/share/tessdata"), // M1/M2 mac
+                        Path.of("/usr/local/share/tessdata"),
+                        Path.of("/opt/homebrew/share/tessdata"),
                         Path.of("/usr/share/tessdata")
                 };
                 tessdataPath = Stream.of(dataCandidates)
@@ -101,8 +107,8 @@ public class FullTextSearchService {
                         .orElse("/usr/local/share/tessdata");
 
                 Path[] libCandidates = {
-                        Path.of("/usr/local/lib/libtesseract.dylib"), // Intel mac
-                        Path.of("/opt/homebrew/lib/libtesseract.dylib"), // M1 mac
+                        Path.of("/usr/local/lib/libtesseract.dylib"),
+                        Path.of("/opt/homebrew/lib/libtesseract.dylib"),
                         Path.of("/usr/local/Cellar/tesseract/5.5.1/lib/libtesseract.dylib")
                 };
                 libPath = Stream.of(libCandidates)
@@ -117,34 +123,33 @@ public class FullTextSearchService {
                     System.setProperty("jna.library.path", libPath);
                     System.setProperty("DYLD_LIBRARY_PATH", libPath);
                 }
-                System.setProperty("TESSDATA_PREFIX", tessdataPath);
-            }
-
-            // --- Linux ---
-            else if (osLower.contains("linux")) {
+            } else if (osLower.contains("linux")) {
                 tessdataPath = "/usr/share/tesseract-ocr/5/tessdata";
                 libPath = "/usr/lib/x86_64-linux-gnu";
-                System.setProperty("TESSDATA_PREFIX", tessdataPath);
                 System.setProperty("LD_LIBRARY_PATH", libPath);
                 System.setProperty("jna.library.path", libPath);
                 log.info("✅ Detected Linux — tessdata={}, lib={}", tessdataPath, libPath);
-            }
-
-            // --- Windows ---
-            else if (osLower.contains("win")) {
+            } else if (osLower.contains("win")) {
                 tessdataPath = "C:\\Program Files\\Tesseract-OCR\\tessdata";
                 libPath = "C:\\Program Files\\Tesseract-OCR";
                 System.setProperty("jna.library.path", libPath);
-                System.setProperty("TESSDATA_PREFIX", tessdataPath);
                 log.info("✅ Detected Windows — tessdata={}, lib={}", tessdataPath, libPath);
-            }
-
-            // --- Fallback ---
-            else {
+            } else {
                 tessdataPath = "/usr/share/tesseract-ocr/tessdata";
-                System.setProperty("TESSDATA_PREFIX", tessdataPath);
                 log.info("Using fallback TESSDATA_PREFIX = {}", tessdataPath);
             }
+
+            if (configuredDataPath != null) {
+                tessdataPath = configuredDataPath;
+                log.info("Overriding tessdata path from configuration: {}", tessdataPath);
+            }
+
+            if (tessdataPath == null) {
+                tessdataPath = "/usr/share/tesseract-ocr/tessdata";
+                log.info("Using fallback TESSDATA_PREFIX = {}", tessdataPath);
+            }
+
+            System.setProperty("TESSDATA_PREFIX", tessdataPath);
 
             // --- Создаём и настраиваем Tesseract ---
             ocr = new Tesseract();
@@ -152,6 +157,14 @@ public class FullTextSearchService {
             ocr.setLanguage(ocrProperties.getLanguages());
             ocr.setPageSegMode(ocrProperties.getPsm());
             ocr.setOcrEngineMode(ocrProperties.getOem());
+
+            if (ocrProperties.getDpi() > 0) {
+                applyTessVariable("user_defined_dpi", Integer.toString(ocrProperties.getDpi()),
+                        "установить пользовательский DPI");
+            }
+
+            applyTessVariable("preserve_interword_spaces", "1",
+                    "включить сохранение интервалов между словами");
 
             // --- Проверяем языковые файлы ---
             String[] langs = ocrProperties.getLanguages().split("\\+");
@@ -182,6 +195,32 @@ public class FullTextSearchService {
         log.info("🧩 ImageIO readers available: {}", String.join(", ", readers));
     }
 
+    private void applyTessVariable(String key, String value, String description) {
+        if (ocr == null) {
+            log.debug("Пропуск установки переменной {} (OCR не инициализирован)", key);
+            return;
+        }
+        try {
+            Method method = Tesseract.class.getMethod("setTessVariable", String.class, String.class);
+            Object result = method.invoke(ocr, key, value);
+
+            if (result instanceof Boolean booleanResult && !booleanResult) {
+                log.warn("Tesseract отклонил переменную {} при попытке {}", key, description);
+            } else {
+                log.debug("Tesseract переменная {}={} применена ({}).", key, value, description);
+            }
+        } catch (NoSuchMethodException e) {
+            log.warn("Метод setTessVariable отсутствует в tess4j — невозможно {} ({}={}).", description, key, value);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            log.warn("Tesseract не смог {} ({}={}). Причина: {}", description, key, value, cause.getMessage());
+        } catch (IllegalAccessException e) {
+            log.warn("Нет доступа к setTessVariable для {} ({}={}).", description, key, value);
+        } catch (RuntimeException e) {
+            log.warn("Неожиданная ошибка при попытке {} ({}={})", description, key, value, e);
+        }
+    }
+
 
     /**
      * Извлечение текста из файла и обновление search_text_cache.
@@ -203,25 +242,49 @@ public class FullTextSearchService {
 
         try {
             String mime = detectMimeType(localFile);
-            String text;
+            boolean imageLike = isImageLike(mime, fileEntity.getFileName());
+            boolean pdfLike = isPdfLike(mime, fileEntity.getFileName());
 
-            if (mime != null && (mime.startsWith("image/") || mime.equals("application/pdf"))) {
-                if (fileEntity.isInline() && fileEntity.getContent() != null) {
-                    try (InputStream in = new ByteArrayInputStream(fileEntity.getContent())) {
-                        text = extractWithOCR(in, fileEntity.getFileName());
-                    }
-                } else {
-                    text = extractWithOCR(localFile);
-                }
-            } else {
-                text = parseToString(localFile);
+            String tikaText = "";
+            if (!imageLike && (ocrProperties.isCombineWithTika() || !pdfLike)) {
+                tikaText = sanitizeText(parseToString(localFile));
             }
 
+            boolean fallbackTriggered = isWeakText(tikaText);
+            boolean runOcr = false;
+            if (ocrProperties.isEnabled() && ocr != null) {
+                if (imageLike) {
+                    runOcr = true;
+                } else if (pdfLike) {
+                    runOcr = ocrProperties.isCombineWithTika() || fallbackTriggered;
+                } else if (fallbackTriggered && isOcrFriendlyExtension(fileEntity.getFileName())) {
+                    runOcr = true;
+                }
+            }
 
-            if (text == null || text.isBlank()) {
+            String ocrText = "";
+            if (runOcr) {
+                if (imageLike) {
+                    log.debug("🧠 Using OCR for image-like file {} (mime={})", fileEntity.getFileName(), mime);
+                } else if (pdfLike && ocrProperties.isCombineWithTika() && !fallbackTriggered) {
+                    log.debug("🧠 Combining Tika + OCR for PDF {} (mime={})", fileEntity.getFileName(), mime);
+                } else if (fallbackTriggered) {
+                    log.debug("🛟 Fallback OCR for {} (mime={}, extracted chars={})", fileEntity.getFileName(), mime,
+                            meaningfulLength(tikaText));
+                }
+
+                ocrText = sanitizeText(extractWithOCR(localFile));
+            }
+
+            String text = mergeTexts(tikaText, ocrText).trim();
+
+            if (text.isBlank()) {
                 log.warn("No text extracted for version_id={}", versionId);
                 return;
             }
+
+            log.debug("📊 Extraction stats for {} -> tika={} chars, ocr={} chars, final={}",
+                    fileEntity.getFileName(), meaningfulLength(tikaText), meaningfulLength(ocrText), meaningfulLength(text));
 
             // СОЗДАЁМ КЭШ ВСЕГДА
             SearchTextCache cache = new SearchTextCache();
@@ -325,6 +388,93 @@ public class FullTextSearchService {
         } finally {
             Files.deleteIfExists(tempFile);
         }
+    }
+
+    private String sanitizeText(String text) {
+        if (text == null) {
+            return "";
+        }
+        String sanitized = text.replace('\u0000', ' ');
+        sanitized = sanitized.replace("\r\n", "\n");
+        sanitized = sanitized.replace('\r', '\n');
+        return sanitized.trim();
+    }
+
+    private String mergeTexts(String tikaText, String ocrText) {
+        String primary = tikaText == null ? "" : tikaText;
+        String secondary = ocrText == null ? "" : ocrText;
+
+        if (primary.isBlank()) {
+            return secondary;
+        }
+        if (secondary.isBlank()) {
+            return primary;
+        }
+        if (primary.equalsIgnoreCase(secondary) || primary.contains(secondary)) {
+            return primary;
+        }
+        if (secondary.contains(primary)) {
+            return secondary;
+        }
+        return primary + System.lineSeparator() + System.lineSeparator() + secondary;
+    }
+
+    private int meaningfulLength(String text) {
+        if (text == null || text.isBlank()) {
+            return 0;
+        }
+        return (int) text.codePoints()
+                .filter(ch -> !Character.isWhitespace(ch))
+                .count();
+    }
+
+    private boolean isWeakText(String text) {
+        if (!ocrProperties.isFallbackEnabled()) {
+            return false;
+        }
+        int threshold = ocrProperties.getFallbackMinLength();
+        if (threshold <= 0) {
+            return false;
+        }
+        return meaningfulLength(text) < threshold;
+    }
+
+    private boolean isImageLike(String mime, String fileName) {
+        if (mime != null && mime.toLowerCase(Locale.ROOT).startsWith("image/")) {
+            return true;
+        }
+        return IMAGE_EXTENSIONS.contains(extensionOf(fileName));
+    }
+
+    private boolean isPdfLike(String mime, String fileName) {
+        if (mime != null && "application/pdf".equalsIgnoreCase(mime)) {
+            return true;
+        }
+        return PDF_EXTENSIONS.contains(extensionOf(fileName));
+    }
+
+    private boolean isOcrFriendlyExtension(String fileName) {
+        String ext = extensionOf(fileName);
+        return IMAGE_EXTENSIONS.contains(ext) || PDF_EXTENSIONS.contains(ext);
+    }
+
+    private String extensionOf(String fileName) {
+        if (fileName == null) {
+            return "";
+        }
+        int dot = fileName.lastIndexOf('.');
+        if (dot < 0 || dot == fileName.length() - 1) {
+            return "";
+        }
+        return fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
 

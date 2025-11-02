@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -75,13 +76,18 @@ public class FileController {
 
             ByteArrayResource resource = new ByteArrayResource(download.getContent());
             String filename = file.getFileName();
+            String safeFilename = (filename == null || filename.isBlank()) ? "file" : filename;
             String mimeType = file.getMimeType();
             long contentLength = file.getFileSize() != null
                     ? file.getFileSize()
                     : download.getContent().length;
 
+            ContentDisposition contentDisposition = ContentDisposition.attachment()
+                    .filename(safeFilename, StandardCharsets.UTF_8)
+                    .build();
+
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
                     .contentType(mimeType != null
                             ? MediaType.parseMediaType(mimeType)
                             : MediaType.APPLICATION_OCTET_STREAM)

@@ -47,6 +47,10 @@ anubis:
     languages: ${ANUBIS_OCR_LANGUAGES:kat+eng+rus}
     psm: ${ANUBIS_OCR_PSM:3}
     oem: ${ANUBIS_OCR_OEM:1}
+    fallback-enabled: ${ANUBIS_OCR_FALLBACK_ENABLED:true}
+    fallback-min-length: ${ANUBIS_OCR_FALLBACK_MIN_LENGTH:120}
+    combine-with-tika: ${ANUBIS_OCR_COMBINE_WITH_TIKA:true}
+    dpi: ${ANUBIS_OCR_DPI:300}
 
 
   # --------------------------

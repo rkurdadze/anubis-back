@@ -15,4 +15,8 @@ public class OcrProperties {
     private String languages = "kat+eng+rus";
     private int psm = 3;
     private int oem = 1;
+    private boolean fallbackEnabled = true;
+    private int fallbackMinLength = 120;
+    private boolean combineWithTika = true;
+    private int dpi = 300;
 }
