@@ -1,6 +1,7 @@
 package ge.comcom.anubis.controller.core;
 
 import ge.comcom.anubis.dto.ObjectFileDto;
+import ge.comcom.anubis.service.core.DocumentPreviewService;
 import ge.comcom.anubis.service.core.FileService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -25,6 +26,7 @@ import java.util.List;
 public class FileController {
 
     private final FileService fileService;
+    private final DocumentPreviewService documentPreviewService;
 
     // ================================================================
     // List files by object ID
@@ -98,6 +100,42 @@ public class FileController {
             return ResponseEntity.notFound().build();
         } catch (UnsupportedOperationException e) {
             return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    // ================================================================
+    // Preview file as PDF
+    // ================================================================
+    @Operation(
+            summary = "Preview file as PDF",
+            description = "Конвертирует исходный файл при помощи Gotenberg и возвращает PDF для предпросмотра.",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Preview rendered successfully"),
+                    @ApiResponse(responseCode = "404", description = "File not found"),
+                    @ApiResponse(responseCode = "502", description = "Gotenberg conversion failed"),
+                    @ApiResponse(responseCode = "500", description = "Unexpected error during conversion")
+            }
+    )
+    @GetMapping("/{fileId}/preview")
+    public ResponseEntity<ByteArrayResource> previewFile(@PathVariable Long fileId) {
+        try {
+            DocumentPreviewService.PreviewDocument preview = documentPreviewService.renderPreview(fileId);
+            ByteArrayResource resource = preview.asResource();
+            ContentDisposition contentDisposition = ContentDisposition.inline()
+                    .filename(preview.filename(), StandardCharsets.UTF_8)
+                    .build();
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .contentLength(preview.content().length)
+                    .body(resource);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }

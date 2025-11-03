@@ -72,3 +72,10 @@ anubis:
   storage:
     temp-dir: ${ANUBIS_STORAGE_TMP:/tmp/anubis}
     external-base-path: ${ANUBIS_STORAGE_FS:/data/anubis}
+
+  preview:
+    enabled: ${ANUBIS_PREVIEW_ENABLED:true}
+    gotenberg:
+      base-url: ${ANUBIS_GOTENBERG_URL:http://localhost:3000}
+      connect-timeout: ${ANUBIS_GOTENBERG_CONNECT_TIMEOUT:5s}
+      read-timeout: ${ANUBIS_GOTENBERG_READ_TIMEOUT:60s}
