@@ -1,28 +1,31 @@
 package ge.comcom.anubis.service.core;
 
 import ge.comcom.anubis.dto.ObjectDto;
-import ge.comcom.anubis.entity.core.ObjectClass;
-import ge.comcom.anubis.entity.core.ObjectEntity;
-import ge.comcom.anubis.entity.core.ObjectLinkEntity;
-import ge.comcom.anubis.entity.core.ObjectType;
-import ge.comcom.anubis.entity.core.ObjectVersionEntity;
-import ge.comcom.anubis.entity.core.VaultEntity;
+import ge.comcom.anubis.entity.core.*;
+import ge.comcom.anubis.entity.meta.PropertyDef;
 import ge.comcom.anubis.entity.security.User;
 import ge.comcom.anubis.enums.LinkDirection;
 import ge.comcom.anubis.mapper.ObjectMapper;
-import ge.comcom.anubis.repository.core.ObjectLinkRepository;
-import ge.comcom.anubis.repository.core.ObjectRepository;
-import ge.comcom.anubis.repository.core.ObjectTypeRepository;
-import ge.comcom.anubis.repository.core.ObjectClassRepository;
+import ge.comcom.anubis.repository.core.*;
+import ge.comcom.anubis.repository.meta.PropertyDefRepository;
+import ge.comcom.anubis.repository.meta.PropertyValueRepository;
+import ge.comcom.anubis.repository.meta.ValueListItemRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Hibernate;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
+
+import ge.comcom.anubis.enums.PropertyDataType;
 
 /**
  * Service layer for managing logical repository objects.
@@ -44,6 +47,12 @@ public class ObjectService {
     private final ObjectMapper objectMapper;
     private final ObjectVersionService objectVersionService;
     private final ObjectVersionAuditService auditService;
+
+
+    private final PropertyDefRepository propertyDefRepository;
+    private final PropertyValueRepository propertyValueRepository;
+    private final PropertyValueMultiRepository propertyValueMultiRepository;
+    private final ValueListItemRepository valueListItemRepository;
 
     /**
      * Creates a new object.
@@ -138,6 +147,13 @@ public class ObjectService {
         List<ObjectEntity> objects = objectRepository.findByIsDeletedFalse();
         objects.forEach(this::initializeForRead);
         return objects;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ObjectEntity> getAllActive(Pageable pageable) {
+        Page<ObjectEntity> page = objectRepository.findByIsDeletedFalse(pageable);
+        page.forEach(this::initializeForRead);
+        return page;
     }
 
     /**
@@ -320,6 +336,29 @@ public class ObjectService {
                 newValue != null ? "'" + newValue + "'" : "<null>");
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<ObjectEntity> getAllFiltered(org.springframework.data.domain.Pageable pageable, Long typeId, Long classId, String search, boolean showDeleted) {
+        org.springframework.data.jpa.domain.Specification<ObjectEntity> spec = org.springframework.data.jpa.domain.Specification.where(null);
+
+        if (!showDeleted) {
+            spec = spec.and((root, query, cb) -> cb.isFalse(root.get("isDeleted")));
+        }
+        if (typeId != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("objectType").get("id"), typeId));
+        }
+        if (classId != null) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("objectClass").get("id"), classId));
+        }
+        if (search != null && !search.isBlank()) {
+            String pattern = "%" + search.toLowerCase().trim() + "%";
+            spec = spec.and((root, query, cb) -> cb.like(cb.lower(root.get("name")), pattern));
+        }
+
+        Page<ObjectEntity> page = objectRepository.findAll(spec, pageable);
+        page.forEach(this::initializeForRead);
+        return page;
+    }
+
     private record ObjectStateSnapshot(String name,
                                        Long typeId,
                                        String typeDisplay,
@@ -407,6 +446,112 @@ public class ObjectService {
 
     private VaultEntity extractVault(ObjectType type) {
         return type != null ? type.getVault() : null;
+    }
+
+    @Deprecated
+    @Transactional
+    public void setValue(ObjectEntity object, String propertyName, Object value) {
+        log.warn("⚠️ Deprecated setValue(String,Object) called for '{}'. Use setValue(Object, PropertyDef, Object).", propertyName);
+    }
+
+
+    @Transactional
+    public void setValue(ObjectEntity object, PropertyDef def, Object value) {
+        if (def == null) throw new IllegalArgumentException("PropertyDef is null");
+        List<PropertyValue> dups = propertyValueRepository
+                .findAllByObjectVersion_Object_IdAndPropertyDef_Id(object.getId(), def.getId());
+
+        PropertyValue pv = dups.isEmpty() ? new PropertyValue() : dups.get(0);
+        if (dups.size() > 1) {
+            for (int i = 1; i < dups.size(); i++) propertyValueRepository.delete(dups.get(i));
+        }
+
+        pv.setPropertyDef(def);
+        pv.setObjectVersion(objectVersionService.getOrCreateLatestVersion(object.getId()));
+
+        // очищаем старые значения
+        pv.setValueText(null);
+        pv.setValueNumber(null);
+        pv.setValueDate(null);
+        pv.setValueBoolean(null);
+        pv.setRefObject(null);
+        pv.setValueListItem(null);
+
+        switch (def.getDataType()) {
+            case BOOLEAN -> pv.setValueBoolean(Boolean.parseBoolean(String.valueOf(value)));
+            case NUMBER -> pv.setValueNumber(new BigDecimal(String.valueOf(value).replace(',', '.')));
+            case DATE -> pv.setValueDate(LocalDate.parse(String.valueOf(value)).atStartOfDay());
+            case VALUELIST -> {
+                if (value instanceof Long id) {
+                    // If not found, create new ValueListItem with placeholder name
+                    ValueListItem item = valueListItemRepository.findById(id).orElseGet(() -> {
+                        ValueListItem newItem = new ValueListItem();
+                        newItem.setId(id); // Set the ID to match import if possible (may need to adjust if ID is generated)
+                        newItem.setValue("Imported item " + id);
+                        newItem.setIsActive(true);
+                        return valueListItemRepository.save(newItem);
+                    });
+                    pv.setValueListItem(item);
+                } else {
+                    throw new IllegalArgumentException("Invalid valuelist id: " + value);
+                }
+            }
+            default -> pv.setValueText(value != null ? value.toString() : null);
+        }
+
+        propertyValueRepository.save(pv);
+        log.debug("💾 Установлено значение '{}' для '{}'", value, def.getName());
+    }
+
+
+    @Transactional
+    public void setValueMulti(ObjectEntity object, PropertyDef def, List<Long> valueIds) {
+        if (def == null) throw new IllegalArgumentException("PropertyDef is null");
+
+        ObjectVersionEntity version = objectVersionService.getOrCreateLatestVersion(object.getId());
+        List<PropertyValue> existing = propertyValueRepository.findAllByObjectVersionIdAndPropertyDefId(version.getId(), def.getId());
+
+        PropertyValue pv = existing.isEmpty() ? new PropertyValue() : existing.get(0);
+        if (existing.size() > 1) {
+            for (int i = 1; i < existing.size(); i++) propertyValueRepository.delete(existing.get(i));
+        }
+
+        pv.setObjectVersion(version);
+        pv.setPropertyDef(def);
+        propertyValueRepository.save(pv);
+
+        propertyValueMultiRepository.deleteAllByPropertyValueId(pv.getId());
+
+        if (valueIds != null) {
+            for (Long id : valueIds) {
+                // If not found, create new ValueListItem with placeholder name
+                ValueListItem item = valueListItemRepository.findById(id).orElseGet(() -> {
+                    ValueListItem newItem = new ValueListItem();
+                    newItem.setId(id); // Set the ID to match import if possible (may need to adjust if ID is generated)
+                    newItem.setValue("Imported item " + id);
+                    newItem.setIsActive(true);
+                    return valueListItemRepository.save(newItem);
+                });
+                PropertyValueMulti multi = new PropertyValueMulti();
+                multi.setPropertyValue(pv);
+                multi.setValueListItem(item);
+                propertyValueMultiRepository.save(multi);
+            }
+        }
+        log.debug("💾 Мульти-значение {} установлено для '{}'", valueIds, def.getName());
+    }
+
+
+    @Transactional(readOnly = true)
+    public Optional<ObjectEntity> findByTypeClassAndName(Long typeId, Long classId, String name) {
+        if (typeId == null || classId == null || name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        return objectRepository.findByObjectType_IdAndObjectClass_IdAndNameIgnoreCaseAndIsDeletedFalse(
+                typeId,
+                classId,
+                name.trim()
+        );
     }
 
 }

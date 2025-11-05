@@ -6,13 +6,20 @@ import ge.comcom.anubis.entity.meta.PropertyDef;
 import ge.comcom.anubis.enums.PropertyDataType;
 import org.mapstruct.*;
 
+/**
+ * Маппер для PropertyDef ↔ DTO.
+ * Исправлено: безопасное получение valueListId через getValueListIdSafe()
+ * (избегает LazyInitializationException при LAZY valueList).
+ */
 @Mapper(componentModel = "spring")
 public interface PropertyDefMapper {
 
+    // ---------- ENTITY → DTO ----------
     @Mapping(target = "refObjectTypeId", source = "refObjectType.id")
-    @Mapping(target = "valueListId", source = "valueList.id")
+    @Mapping(target = "valueListId", source = "valueListIdSafe") // ✅ безопасный геттер
     PropertyDefDto toDto(PropertyDef entity);
 
+    // ---------- REQUEST → ENTITY ----------
     @Mapping(target = "name", expression = "java(trim(req.getName()))")
     @Mapping(target = "dataType", source = "dataType", qualifiedByName = "stringToPropertyDataType")
     @Mapping(target = "refObjectType", ignore = true)
@@ -23,6 +30,7 @@ public interface PropertyDefMapper {
     @Mapping(target = "isActive", constant = "true")
     PropertyDef toEntity(PropertyDefRequest req);
 
+    // ---------- UPDATE ----------
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "name", ignore = true)
     @Mapping(target = "refObjectType", ignore = true)
@@ -30,15 +38,12 @@ public interface PropertyDefMapper {
     @Mapping(target = "dataType", source = "dataType", qualifiedByName = "stringToPropertyDataType")
     void updateEntityFromRequest(PropertyDefRequest req, @MappingTarget PropertyDef entity);
 
+    // ---------- HELPERS ----------
     @Named("stringToPropertyDataType")
     default PropertyDataType mapDataType(String dataType) {
-        if (dataType == null) {
-            return null;
-        }
+        if (dataType == null) return null;
         String normalized = dataType.trim();
-        if (normalized.isEmpty()) {
-            return null;
-        }
+        if (normalized.isEmpty()) return null;
         try {
             return PropertyDataType.valueOf(normalized.toUpperCase());
         } catch (IllegalArgumentException ex) {

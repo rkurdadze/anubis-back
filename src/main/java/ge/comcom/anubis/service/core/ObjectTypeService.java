@@ -67,4 +67,14 @@ public class ObjectTypeService {
         }
         objectTypeRepository.deleteById(id);
     }
+
+    @Transactional(readOnly = true)
+    public ObjectType findByName(String name) {
+        return objectTypeRepository.findByNameIgnoreCase(name).orElse(null);
+    }
+
+    @Transactional
+    public ObjectType save(ObjectType objectType) {
+        return objectTypeRepository.save(objectType);
+    }
 }

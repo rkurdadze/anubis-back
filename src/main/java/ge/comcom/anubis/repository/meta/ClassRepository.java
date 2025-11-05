@@ -14,4 +14,6 @@ public interface ClassRepository extends JpaRepository<ObjectClass, Long> {
     boolean existsByObjectTypeIdAndNameIgnoreCase(Long objectTypeId, String name);
 
     boolean existsByObjectTypeIdAndNameIgnoreCaseAndIdNot(Long objectTypeId, String name, Long excludeId);
+
+    Optional<ObjectClass> findByObjectTypeAndNameIgnoreCase(ge.comcom.anubis.entity.core.ObjectType objectType, String name);
 }

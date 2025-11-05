@@ -21,5 +21,7 @@ public interface ValueListRepository extends BaseActiveRepository<ValueList, Lon
     boolean existsByNameIgnoreCase(String name);
 
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long excludeId);
+
+    Optional<ValueList> findByNameIgnoreCase(String name);
 }
 

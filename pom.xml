@@ -44,6 +44,12 @@
     </dependencyManagement>
 
     <dependencies>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-test</artifactId>
+        </dependency>
+
         <!-- Web / REST -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

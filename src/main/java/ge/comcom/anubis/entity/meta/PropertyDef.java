@@ -3,6 +3,7 @@ package ge.comcom.anubis.entity.meta;
 import com.vladmihalcea.hibernate.type.json.JsonType;
 import com.vladmihalcea.hibernate.type.basic.PostgreSQLEnumType;
 import ge.comcom.anubis.entity.ActivatableEntity;
+import ge.comcom.anubis.entity.core.ObjectClass;
 import ge.comcom.anubis.entity.core.ObjectType;
 import ge.comcom.anubis.entity.core.ValueList;
 import ge.comcom.anubis.enums.PropertyDataType;
@@ -98,5 +99,12 @@ public class PropertyDef implements ActivatableEntity {
     public Boolean getIsActive() { return isActive; }
     @Override
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+
+
+
+    public Long getValueListIdSafe() {
+        return valueList != null ? valueList.getId() : null;
+    }
+
 
 }

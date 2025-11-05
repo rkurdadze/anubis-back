@@ -308,10 +308,8 @@ public class ObjectVersionService {
      * Returns latest version or creates if none exists.
      */
     public ObjectVersionEntity getOrCreateLatestVersion(Long objectId) {
-        ObjectVersionEntity latest = getLatestVersion(objectId);
-        return (latest != null)
-                ? latest
-                : createNewVersion(objectId, "Auto-created initial version");
+        return versionRepository.findTopByObject_IdOrderByVersionNumberDesc(objectId)
+                .orElseGet(() -> createNewVersion(objectId, "Auto-created version"));
     }
 
 
@@ -336,4 +334,5 @@ public class ObjectVersionService {
                 .map(versionMapper::toDto)
                 .toList();
     }
+
 }

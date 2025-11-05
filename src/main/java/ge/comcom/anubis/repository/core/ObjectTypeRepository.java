@@ -18,4 +18,6 @@ public interface ObjectTypeRepository extends JpaRepository<ObjectType, Long> {
     @Override
     @EntityGraph(attributePaths = "vault")
     Optional<ObjectType> findById(Long id);
+
+    Optional<ObjectType> findByNameIgnoreCase(String name);
 }

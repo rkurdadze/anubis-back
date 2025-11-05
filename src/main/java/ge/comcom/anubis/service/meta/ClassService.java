@@ -5,13 +5,18 @@ import ge.comcom.anubis.dto.ClassDto;
 import ge.comcom.anubis.dto.ClassRequest;
 import ge.comcom.anubis.entity.core.ObjectClass;
 import ge.comcom.anubis.entity.core.ObjectType;
+import ge.comcom.anubis.entity.meta.ClassProperty;
+import ge.comcom.anubis.entity.meta.ClassPropertyId;
+import ge.comcom.anubis.entity.meta.PropertyDef;
 import ge.comcom.anubis.entity.security.Acl;
 import ge.comcom.anubis.mapper.meta.ObjectClassMapper;
 import ge.comcom.anubis.repository.core.ObjectTypeRepository;
+import ge.comcom.anubis.repository.meta.ClassPropertyRepository;
 import ge.comcom.anubis.repository.meta.ClassRepository;
 import ge.comcom.anubis.repository.security.AclRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Service layer for managing Object Classes.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -28,6 +34,8 @@ public class ClassService {
     private final ObjectTypeRepository objectTypeRepository;
     private final AclRepository aclRepository;
     private final ObjectClassMapper mapper;
+
+    private final ClassPropertyRepository classPropertyRepository;
 
     public ClassDto create(ClassRequest req) {
         ObjectType type = objectTypeRepository.findById(req.getObjectTypeId())
@@ -94,6 +102,34 @@ public class ClassService {
             throw new EntityNotFoundException("Class not found: id=" + id);
         }
         classRepository.deleteById(id);
+    }
+
+    @Transactional
+    public ObjectClass upsertByName(ObjectType objectType, String className) {
+        return classRepository.findByObjectTypeAndNameIgnoreCase(objectType, className)
+                .orElseGet(() -> {
+                    ObjectClass newClass = new ObjectClass();
+                    newClass.setName(className.trim());
+                    newClass.setObjectType(objectType);
+                    ObjectClass saved = classRepository.save(newClass);
+                    log.info("🆕 Создан ObjectClass '{}' для ObjectType '{}'", className, objectType.getName());
+                    return saved;
+                });
+    }
+
+    @Transactional
+    public void ensureClassPropertyBinding(ObjectClass objectClass, PropertyDef propertyDef) {
+        if (objectClass == null || propertyDef == null) return;
+        boolean exists = classPropertyRepository.existsByObjectClassAndPropertyDef(objectClass, propertyDef);
+        if (!exists) {
+            ClassProperty link = new ClassProperty();
+            link.setId(new ClassPropertyId(objectClass.getId(), propertyDef.getId()));
+            link.setObjectClass(objectClass);
+            link.setPropertyDef(propertyDef);
+            link.setIsActive(true);
+            classPropertyRepository.save(link);
+            log.info("🔗 Связано свойство '{}' с классом '{}'", propertyDef.getName(), objectClass.getName());
+        }
     }
 
 }

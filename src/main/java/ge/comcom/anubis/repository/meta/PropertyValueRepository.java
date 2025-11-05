@@ -1,6 +1,8 @@
 package ge.comcom.anubis.repository.meta;
 
 import ge.comcom.anubis.entity.core.PropertyValue;
+import ge.comcom.anubis.entity.core.ObjectEntity;
+import ge.comcom.anubis.entity.meta.PropertyDef;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -14,6 +16,16 @@ public interface PropertyValueRepository extends JpaRepository<PropertyValue, Lo
 
     Optional<PropertyValue> findByObjectVersionIdAndPropertyDefId(Long versionId, Long propertyDefId);
 
+
+    @Query("""
+    SELECT pv
+    FROM PropertyValue pv
+    WHERE pv.objectVersion.object = :object
+      AND pv.propertyDef = :propertyDef
+""")
+    Optional<PropertyValue> findByObjectAndPropertyDef(ObjectEntity object, PropertyDef propertyDef);
+
+
     @Query("""
         SELECT CASE WHEN COUNT(v) > 0 THEN TRUE ELSE FALSE END
         FROM PropertyValue v
@@ -23,4 +35,11 @@ public interface PropertyValueRepository extends JpaRepository<PropertyValue, Lo
           AND v.objectVersion.id <> :excludeVersionId
     """)
     boolean existsDuplicateInClass(Long classId, Long propertyDefId, String valueText, Long excludeVersionId);
+
+
+    List<PropertyValue> findAllByObjectVersion_Object_IdAndPropertyDef_Id(Long objectId, Long propertyDefId);
+    Optional<PropertyValue> findFirstByObjectVersion_Object_IdAndPropertyDef_Id(Long objectId, Long propertyDefId);
+
+    List<PropertyValue> findAllByObjectVersionIdAndPropertyDefId(Long versionId, Long propertyDefId);
+
 }

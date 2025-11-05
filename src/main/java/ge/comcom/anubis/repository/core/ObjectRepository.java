@@ -2,16 +2,22 @@ package ge.comcom.anubis.repository.core;
 
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 /**
  * Repository interface for managing ObjectEntity records.
  */
-public interface ObjectRepository extends JpaRepository<ObjectEntity, Long> {
+public interface ObjectRepository
+        extends JpaRepository<ObjectEntity, Long>,
+        JpaSpecificationExecutor<ObjectEntity> {
     List<ObjectEntity> findByObjectType_Id(Long typeId);
 
 
@@ -22,4 +28,12 @@ public interface ObjectRepository extends JpaRepository<ObjectEntity, Long> {
     Optional<ObjectEntity> findByIdWithLinks(@Param("id") Long id);
 
     List<ObjectEntity> findByIsDeletedFalse();
+
+    Page<ObjectEntity> findByIsDeletedFalse(Pageable pageable);
+
+    Optional<ObjectEntity> findByObjectType_IdAndObjectClass_IdAndNameIgnoreCaseAndIsDeletedFalse(
+            Long objectTypeId,
+            Long objectClassId,
+            String name
+    );
 }

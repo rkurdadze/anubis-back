@@ -114,3 +114,5 @@ src/main/java/ge/comcom/anubis/entity/.DS_Store
 src/main/java/ge/comcom/anubis/mapper/.DS_Store
 src/main/java/ge/comcom/anubis/repository/.DS_Store
 src/main/java/ge/comcom/anubis/service/.DS_Store
+src/main/resources/.DS_Store
+src/main/resources/db/.DS_Store

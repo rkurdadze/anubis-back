@@ -19,6 +19,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * REST controller for managing logical repository objects.
@@ -37,23 +43,42 @@ public class ObjectController {
     private final ObjectMapper mapper;
     private final ObjectLinkMapper linkMapper;
 
+    private static final Logger log = LoggerFactory.getLogger(ObjectController.class);
+
     // ============================================================
     // CRUD OPERATIONS
     // ============================================================
 
     /**
-     * Retrieves all active (non-deleted) repository objects.
+     * Retrieves all (optionally filtered) repository objects with pagination.
      *
-     * @return list of active objects as DTOs
+     * @param pageable pagination and sorting information
+     * @param filters filter parameters as map
+     * @return page of objects as DTOs
      */
     @GetMapping
-    @Operation(summary = "Get all active objects",
-            description = "Returns all non-deleted logical repository objects.")
-    @ApiResponse(responseCode = "200", description = "List of active objects returned successfully.")
-    public List<ObjectDto> getAll() {
-        return objectService.getAllActive().stream()
-                .map(mapper::toDto)
-                .toList();
+    @Operation(summary = "Get all (optionally filtered) objects",
+            description = "Returns paginated objects filtered by type, class, search string and deletion flag.")
+    @ApiResponse(responseCode = "200", description = "Page of objects returned successfully.")
+    public Page<ObjectDto> getAll(Pageable pageable, @RequestParam Map<String, String> filters) {
+        Long typeId = parseLongSafe(filters.get("typeId"));
+        Long classId = parseLongSafe(filters.get("classId"));
+        String search = filters.getOrDefault("search", null);
+        boolean showDeleted = Boolean.parseBoolean(filters.getOrDefault("showDeleted", "false"));
+
+        log.info("📦 Filtering objects: typeId={}, classId={}, search='{}', showDeleted={}",
+                typeId, classId, search, showDeleted);
+
+        return objectService.getAllFiltered(pageable, typeId, classId, search, showDeleted)
+                .map(mapper::toDto);
+    }
+
+    private Long parseLongSafe(String value) {
+        try {
+            return (value == null || value.isBlank()) ? null : Long.valueOf(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

@@ -1,6 +1,8 @@
 package ge.comcom.anubis.repository.core;
 
 import ge.comcom.anubis.entity.core.PropertyValueMulti;
+import ge.comcom.anubis.entity.core.ObjectEntity;
+import ge.comcom.anubis.entity.meta.PropertyDef;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -16,5 +18,13 @@ public interface PropertyValueMultiRepository extends JpaRepository<PropertyValu
     @Modifying
     @Query("delete from PropertyValueMulti m where m.propertyValue.id = :propertyValueId")
     void deleteAllByPropertyValueId(Long propertyValueId);
-}
 
+    @Query("""
+        SELECT pvm
+        FROM PropertyValueMulti pvm
+        WHERE pvm.propertyValue.objectVersion.object = :object
+          AND pvm.propertyValue.propertyDef = :propertyDef
+    """)
+    List<PropertyValueMulti> findByObjectAndPropertyDef(ObjectEntity object,
+                                                        PropertyDef propertyDef);
+}

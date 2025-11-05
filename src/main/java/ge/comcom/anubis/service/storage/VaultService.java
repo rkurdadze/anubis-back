@@ -76,4 +76,14 @@ public class VaultService {
         return storageRepository.findByDefaultStorageTrue()
                 .orElseThrow(() -> new IllegalStateException("No default file storage configured"));
     }
+
+
+
+    public long count() {
+        return vaultRepository.count();
+    }
+
+    public VaultEntity save(VaultEntity vault) {
+        return vaultRepository.save(vault);
+    }
 }
