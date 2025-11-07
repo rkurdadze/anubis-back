@@ -527,6 +527,53 @@ public class FullTextSearchService {
         files.forEach(this::indexObjectFile);
     }
 
+    @Async
+    @Transactional
+    public void reindexOcrCandidates() {
+        List<ObjectFileEntity> candidates = fileRepository.findAllOcrCandidates();
+        if (candidates == null || candidates.isEmpty()) {
+            log.info("🔄 OCR reindex requested, but no candidates were found.");
+            return;
+        }
+
+        log.info("🔄 Reindexing {} OCR candidates...", candidates.size());
+        Set<Long> processed = new HashSet<>();
+        for (ObjectFileEntity file : candidates) {
+            Long versionId = file.getVersion() != null ? file.getVersion().getId() : null;
+            if (versionId == null) {
+                log.debug("Skipping file {} without version during OCR reindex", file.getId());
+                continue;
+            }
+            if (processed.add(versionId)) {
+                indexObjectFile(file);
+            }
+        }
+        log.info("✅ OCR-focused reindex finished ({} versions processed)", processed.size());
+    }
+
+    @Async
+    @Transactional
+    public void indexMissing() {
+        List<ObjectFileEntity> files = fileRepository.findAllWithoutIndexedText();
+        if (files == null || files.isEmpty()) {
+            log.info("🔍 No missing search_text_cache entries detected.");
+            return;
+        }
+
+        log.info("🔍 Indexing {} versions that have no cached text...", files.size());
+        Set<Long> processed = new HashSet<>();
+        for (ObjectFileEntity file : files) {
+            Long versionId = file.getVersion() != null ? file.getVersion().getId() : null;
+            if (versionId == null) {
+                continue;
+            }
+            if (processed.add(versionId)) {
+                indexObjectFile(file);
+            }
+        }
+        log.info("✅ Indexed {} previously missing versions", processed.size());
+    }
+
     /**
      * Поиск по контенту.
      */

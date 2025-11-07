@@ -43,6 +43,20 @@ public class FullTextSearchController {
         return ResponseEntity.accepted().body("Reindexing started");
     }
 
+    @PostMapping("/reindex/ocr")
+    public ResponseEntity<String> reindexOcrCandidates() {
+        log.info("♻️ Starting OCR-focused reindex...");
+        searchService.reindexOcrCandidates();
+        return ResponseEntity.accepted().body("OCR reindex started");
+    }
+
+    @PostMapping("/reindex/missing")
+    public ResponseEntity<String> indexMissing() {
+        log.info("♻️ Indexing versions without cached text...");
+        searchService.indexMissing();
+        return ResponseEntity.accepted().body("Indexing of missing entries started");
+    }
+
     /**
      * Переиндексация конкретного объекта по его версии.
      *

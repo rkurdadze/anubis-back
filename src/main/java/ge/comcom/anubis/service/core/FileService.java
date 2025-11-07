@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 
@@ -39,6 +40,8 @@ public class FileService {
     private final StorageStrategyRegistry strategyRegistry;
     private final FullTextSearchService fullTextSearchService;
     private final ObjectFileMapper objectFileMapper;
+
+    private static final String DEFAULT_VERSION_COMMENT = "Auto-version from upload";
 
     /**
      * Returns all files attached to a given object.
@@ -138,7 +141,13 @@ public class FileService {
      */
     @Transactional
     public ObjectFileDto saveFile(Long objectId, MultipartFile file) throws IOException {
+        return saveFile(objectId, file, null);
+    }
+
+    @Transactional
+    public ObjectFileDto saveFile(Long objectId, MultipartFile file, SaveOptions options) throws IOException {
         var user = UserContext.getCurrentUser();
+        SaveOptions effectiveOptions = options != null ? options : SaveOptions.builder().build();
 
         // 1. Получаем объект
         var objectEntity = objectService.getById(objectId);
@@ -167,6 +176,7 @@ public class FileService {
         entity.setStorage(storage);
 
         ObjectVersionEntity version = null;
+        boolean versionCreatedHere = effectiveOptions.getTargetVersionId() == null;
         ObjectFileEntity savedFile = null;
 
         try {
@@ -174,14 +184,28 @@ public class FileService {
             strategy.save(storage, entity, file);
 
             // 4. ТОЛЬКО ПОСЛЕ УСПЕХА — создаём версию
-            version = versionService.createNewVersion(objectId, "Auto-version from upload");
+            if (versionCreatedHere) {
+                version = versionService.createNewVersion(
+                        objectId,
+                        effectiveOptions.getVersionComment(),
+                        effectiveOptions.getVersionCreatedAt(),
+                        effectiveOptions.getVersionModifiedAt()
+                );
+            } else {
+                version = versionService.getById(effectiveOptions.getTargetVersionId());
+                if (!Objects.equals(version.getObject().getId(), objectId)) {
+                    throw new IllegalArgumentException("Target version does not belong to object " + objectId);
+                }
+            }
 
             // 5. Привязываем файл к версии
             entity.setVersion(version);
             savedFile = fileRepository.save(entity);
 
             // 6. Асинхронная индексация
-            triggerAsyncIndexing(savedFile);
+            if (!effectiveOptions.isSkipIndexing()) {
+                triggerAsyncIndexing(savedFile);
+            }
 
             // 7. Успешный аудит
             auditService.logAction(
@@ -213,7 +237,7 @@ public class FileService {
             }
 
             // Удаляем версию, если она была создана
-            if (version != null) {
+            if (version != null && versionCreatedHere) {
                 try {
                     versionService.deleteVersion(version.getId()); // должен быть @Transactional
                 } catch (Exception deleteVerEx) {
@@ -296,6 +320,93 @@ public class FileService {
 
         log.info("File '{}' updated by {}", file.getFileName(), user.getUsername());
         return objectFileMapper.toDto(updated);
+    }
+
+    public static class SaveOptions {
+        private final boolean skipIndexing;
+        private final Instant versionCreatedAt;
+        private final Instant versionModifiedAt;
+        private final String versionComment;
+        private final Long targetVersionId;
+
+        private SaveOptions(boolean skipIndexing, Instant versionCreatedAt, Instant versionModifiedAt,
+                            String versionComment, Long targetVersionId) {
+            this.skipIndexing = skipIndexing;
+            this.versionCreatedAt = versionCreatedAt;
+            this.versionModifiedAt = versionModifiedAt;
+            this.versionComment = versionComment != null ? versionComment : DEFAULT_VERSION_COMMENT;
+            this.targetVersionId = targetVersionId;
+        }
+
+        public static Builder builder() {
+            return new Builder();
+        }
+
+        public boolean isSkipIndexing() {
+            return skipIndexing;
+        }
+
+        public Instant getVersionCreatedAt() {
+            return versionCreatedAt;
+        }
+
+        public Instant getVersionModifiedAt() {
+            return versionModifiedAt;
+        }
+
+        public String getVersionComment() {
+            return versionComment;
+        }
+
+        public Long getTargetVersionId() {
+            return targetVersionId;
+        }
+
+        public static SaveOptions importOptions(Instant createdAt, Instant modifiedAt, String comment) {
+            return builder()
+                    .skipIndexing(true)
+                    .versionCreatedAt(createdAt)
+                    .versionModifiedAt(modifiedAt)
+                    .versionComment(comment)
+                    .build();
+        }
+
+        public static class Builder {
+            private boolean skipIndexing;
+            private Instant versionCreatedAt;
+            private Instant versionModifiedAt;
+            private String versionComment = DEFAULT_VERSION_COMMENT;
+            private Long targetVersionId;
+
+            public Builder skipIndexing(boolean skipIndexing) {
+                this.skipIndexing = skipIndexing;
+                return this;
+            }
+
+            public Builder versionCreatedAt(Instant versionCreatedAt) {
+                this.versionCreatedAt = versionCreatedAt;
+                return this;
+            }
+
+            public Builder versionModifiedAt(Instant versionModifiedAt) {
+                this.versionModifiedAt = versionModifiedAt;
+                return this;
+            }
+
+            public Builder versionComment(String versionComment) {
+                this.versionComment = versionComment;
+                return this;
+            }
+
+            public Builder targetVersionId(Long targetVersionId) {
+                this.targetVersionId = targetVersionId;
+                return this;
+            }
+
+            public SaveOptions build() {
+                return new SaveOptions(skipIndexing, versionCreatedAt, versionModifiedAt, versionComment, targetVersionId);
+            }
+        }
     }
 
     private void triggerAsyncIndexing(ObjectFileEntity fileEntity) {

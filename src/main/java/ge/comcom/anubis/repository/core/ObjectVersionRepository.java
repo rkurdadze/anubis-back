@@ -28,6 +28,14 @@ public interface ObjectVersionRepository extends JpaRepository<ObjectVersionEnti
     Optional<ObjectVersionEntity> findTopByObject_IdOrderByVersionNumberDesc(Long objectId);
 
     /**
+     * Возвращает последнюю версию объекта с указанным комментарием (без учёта регистра).
+     */
+    Optional<ObjectVersionEntity> findTopByObject_IdAndCommentIgnoreCaseOrderByVersionNumberDesc(
+            Long objectId,
+            String comment
+    );
+
+    /**
      * Возвращает максимальный номер версии для объекта.
      */
     @Query("SELECT MAX(v.versionNumber) FROM ObjectVersionEntity v WHERE v.object.id = :objectId")

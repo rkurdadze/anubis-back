@@ -96,7 +96,18 @@ public class ValueListService {
     /**
      * Ищет элемент в ValueList по имени (без регистра), если не найден — создаёт новый.
      */
-    public ValueListItem upsertItem(ValueList valueList, String itemName) {
+    public ValueListItem upsertItem(Long valueListId, String itemName) {
+        if (valueListId == null) {
+            throw new IllegalArgumentException("ValueList id must be provided");
+        }
+
+        if (itemName == null || itemName.isBlank()) {
+            throw new IllegalArgumentException("ValueList item name must be provided");
+        }
+
+        ValueList valueList = repository.findById(valueListId)
+                .orElseThrow(() -> new EntityNotFoundException("ValueList not found: id=" + valueListId));
+
         String normalized = itemName.trim();
         Optional<ValueListItem> existing = itemRepository.findByValueListAndValueIgnoreCase(valueList, normalized);
         if (existing.isPresent()) {

@@ -13,6 +13,7 @@ import ge.comcom.anubis.repository.meta.PropertyDefRepository;
 import ge.comcom.anubis.service.core.FileService;
 import ge.comcom.anubis.service.core.ObjectService;
 import ge.comcom.anubis.service.core.ObjectTypeService;
+import ge.comcom.anubis.service.core.ObjectVersionService;
 import ge.comcom.anubis.service.meta.ClassService;
 import ge.comcom.anubis.service.meta.PropertyDefService;
 import ge.comcom.anubis.service.meta.ValueListService;
@@ -32,9 +33,16 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Импорт из M-Files backup (CSV + папка "(Files)").
@@ -54,6 +62,7 @@ public class MFilesImportService {
     private final PropertyDefRepository propertyDefRepository;
     private final ValueListService valueListService;
     private final ObjectService objectService;
+    private final ObjectVersionService objectVersionService;
     private final FileService fileService;
     private final VaultService vaultService;
     private final FileStorageAdminService fileStorageAdminService;
@@ -67,20 +76,47 @@ public class MFilesImportService {
     private static final String FILE_COL = "File";
     private static final String OBJECT_TYPE_COL = "Object Type";
     private static final String CLASS_COL = "Class";
-
-    // из вашего задания: валюлисты и мульти-валюлист
-    private static final String DOC_TYPE = "დოკუმენტის ტიპი";
-    private static final String DOC_SUBTYPE = "დოკუმენტის ქვეტიპი";
-    private static final String ORDER_TYPE = "ბრძანების ტიპი";
-    private static final String ADDITIONAL_CLASSES = "Additional classes";
-    private static final String SINGLE_FILE = "Single file";
     private static final String DATE_CREATED = "Date Created";
     private static final String DATE_MODIFIED = "Date Modified";
+    private static final String IMPORT_VERSION_COMMENT = "Imported from M-Files backup";
 
     /**
      * Разделители для мультизначных колонок
      */
     private static final String MULTI_SPLIT_REGEX = "[;,]";
+
+    private static final Pattern DATE_VALUE_PATTERN = Pattern.compile(
+            "^\\s*\\d{1,4}([./-])\\d{1,2}\\1\\d{2,4}(\\s+\\d{1,2}:\\d{2}(?::\\d{2})?(\\s?[APap][mM])?)?\\s*$"
+    );
+
+    private static final Pattern ISO_DATE_PATTERN = Pattern.compile(
+            "^\\d{4}-\\d{2}-\\d{2}(?:[T\\s]\\d{2}:\\d{2}(?::\\d{2})?)?(?:Z)?$"
+    );
+
+    private static final Pattern TWO_DIGIT_YEAR_PATTERN = Pattern.compile(
+            "^(\\s*\\d{1,2}[./-]\\d{1,2}[./-])(\\d{2})(.*)$"
+    );
+
+    private static final ZoneId IMPORT_ZONE = ZoneId.systemDefault();
+
+    private static final List<DateFormatSpec> DATE_FORMATS = List.of(
+            format("M/d/uuuu HH:mm", false),
+            format("M/d/uuuu H:mm", false),
+            format("M/d/uuuu hh:mm a", false),
+            format("M/d/uuuu h:mm a", false),
+            format("M/d/uuuu HH:mm:ss", false),
+            format("M/d/uuuu hh:mm:ss a", false),
+            format("M/d/uuuu", true),
+            format("d.M.uuuu HH:mm", false),
+            format("d.M.uuuu H:mm", false),
+            format("d.M.uuuu HH:mm:ss", false),
+            format("d.M.uuuu", true),
+            format("uuuu-MM-dd HH:mm:ss", false),
+            format("uuuu-MM-dd'T'HH:mm:ss", false),
+            format("uuuu-MM-dd", true)
+    );
+
+    private static final Set<String> BOOLEAN_LITERALS = Set.of("yes", "no", "true", "false", "1", "0");
 
     /**
      * Колонка вида "Название [id<:ver>]"?
@@ -177,11 +213,6 @@ public class MFilesImportService {
                     normalizeHeader(FILE_COL),
                     normalizeHeader(OBJECT_TYPE_COL),
                     normalizeHeader(CLASS_COL),
-                    normalizeHeader(DOC_TYPE),
-                    normalizeHeader(DOC_SUBTYPE),
-                    normalizeHeader(ORDER_TYPE),
-                    normalizeHeader(ADDITIONAL_CLASSES),
-                    normalizeHeader(SINGLE_FILE),
                     normalizeHeader(DATE_CREATED),
                     normalizeHeader(DATE_MODIFIED),
                     // частые служебные поля M-Files, чтобы не создавать PropertyDef:
@@ -303,9 +334,6 @@ public class MFilesImportService {
         ObjectType objectType = upsertObjectTypeWithVault(objectTypeName, defaultVault);
         ObjectClass objectClass = classService.upsertByName(objectType, className);
 
-        // Гарантируем PropertyDef для SINGLE_FILE
-        propertyDefService.findOrCreateDynamic(objectClass, SINGLE_FILE, PropertyDataType.BOOLEAN, false);
-
         // Имя объекта
         String objectName = Optional.ofNullable(value(row, headerAlias, "Name"))
                 .orElse(Optional.ofNullable(value(row, headerAlias, "Name or title")).orElse(className));
@@ -328,102 +356,115 @@ public class MFilesImportService {
             obj = objectService.create(dto);
         }
 
-        // --- фиксированные справочники и даты
-        upsertValuelistAndSet(obj, objectClass, DOC_TYPE, value(row, headerAlias, DOC_TYPE), false);
-        upsertValuelistAndSet(obj, objectClass, DOC_SUBTYPE, value(row, headerAlias, DOC_SUBTYPE), false);
-        upsertValuelistAndSet(obj, objectClass, ORDER_TYPE, value(row, headerAlias, ORDER_TYPE), false);
-        upsertValuelistAndSet(obj, objectClass, ADDITIONAL_CLASSES, value(row, headerAlias, ADDITIONAL_CLASSES), true);
-        setBooleanIfPresent(obj, SINGLE_FILE, value(row, headerAlias, SINGLE_FILE));
-        setDateIfPresent(obj, DATE_CREATED, value(row, headerAlias, DATE_CREATED));
-        setDateIfPresent(obj, DATE_MODIFIED, value(row, headerAlias, DATE_MODIFIED));
+        Instant versionCreatedAt = parseDateToInstant(value(row, headerAlias, DATE_CREATED));
+        Instant versionModifiedAt = parseDateToInstant(value(row, headerAlias, DATE_MODIFIED));
 
-        // --- динамические свойства
-        for (String colRaw : headers.keySet()) {
-            if (excludedNormalized.contains(normalizeHeader(colRaw))) continue;
-            // Игнорируем служебные колонки вида "[id<:ver>]" — по ним не создаём PropertyDef
-            if (isIdVerColumn(colRaw)) {
-                continue;
+        ObjectVersionService.VersionAcquisition versionAcquisition = objectVersionService.acquireVersionForComment(
+                obj.getId(),
+                IMPORT_VERSION_COMMENT,
+                versionCreatedAt,
+                versionModifiedAt
+        );
+        ObjectVersionEntity importVersion = versionAcquisition.version();
+        boolean createdVersion = versionAcquisition.createdNew();
+
+        try {
+            // --- динамические свойства
+            for (String colRaw : headers.keySet()) {
+                if (excludedNormalized.contains(normalizeHeader(colRaw))) continue;
+                if (isIdVerColumn(colRaw)) {
+                    continue;
+                }
+
+                String raw = value(row, headerAlias, colRaw);
+                if (raw == null || raw.isBlank()) continue;
+
+                boolean hasPair = hasIdVerPair(headers, colRaw);
+                boolean isMulti = looksLikeMulti(raw);
+                String cleanCol = colRaw != null && colRaw.startsWith("#") ? colRaw.substring(1).trim() : colRaw;
+
+                Set<String> SYSTEM_FIELDS = Set.of(
+                        "Accessed by Me", "Modified by", "Created by", "Class", "Workflow",
+                        "Object ID", "Deleted"
+                );
+                if (SYSTEM_FIELDS.contains(cleanCol)) {
+                    log.debug("⚙️ Пропущено системное поле '{}'", cleanCol);
+                    continue;
+                }
+
+                PropertyDataType inferredType = hasPair ? PropertyDataType.VALUELIST : guessType(cleanCol, raw, isMulti);
+
+                Optional<PropertyDef> existingDef =
+                        propertyDefRepository.findByClassIdAndNameIgnoreCase(objectClass.getId(), cleanCol);
+                PropertyDef def = existingDef.orElseGet(() -> {
+                    PropertyDataType typeToUse = hasPair ? PropertyDataType.VALUELIST : inferredType;
+                    PropertyDef created = propertyDefService.findOrCreateDynamic(objectClass, cleanCol, typeToUse, isMulti);
+                    log.info("🆕 Автоматически создано свойство '{}' для класса '{}'", cleanCol, objectClass.getName());
+                    return created;
+                });
+
+                if (hasPair) {
+                    def = ensureValueListProperty(def, isMulti);
+                    if (isMulti) {
+                        List<Long> ids = ensureValueListItems(def, splitMulti(raw));
+                        objectService.setValueMulti(obj, def, ids);
+                    } else {
+                        Long id = ensureValueListItem(def, raw.trim());
+                        objectService.setValue(obj, def, id);
+                    }
+                    continue;
+                }
+
+                switch (def.getDataType()) {
+                    case BOOLEAN -> objectService.setValue(obj, def, parseBoolean(raw));
+                    case DATE -> {
+                        LocalDateTime dt = tryParseDate(raw);
+                        if (dt != null) {
+                            objectService.setValue(obj, def, dt.toLocalDate());
+                        }
+                    }
+                    default -> objectService.setValue(obj, def, raw);
+                }
             }
 
-            String col = colRaw;
-            String raw = value(row, headerAlias, col);
-            if (raw == null || raw.isBlank()) continue;
-
-            // Проверяем, есть ли у этой колонки пара [id<:ver>]
-            boolean hasPair = hasIdVerPair(headers, col);
-            boolean isMulti = looksLikeMulti(raw);
-            PropertyDataType type = hasPair ? PropertyDataType.VALUELIST : guessType(col, raw, isMulti);
-
-            // Очистка системного префикса # и фильтрация системных колонок
-            String cleanCol = col != null && col.startsWith("#") ? col.substring(1).trim() : col;
-            Set<String> SYSTEM_FIELDS = Set.of(
-                "Accessed by Me", "Modified by", "Created by", "Class", "Workflow",
-                "Single file", "Object ID", "Deleted"
-            );
-            if (SYSTEM_FIELDS.contains(cleanCol)) {
-                log.debug("⚙️ Пропущено системное поле '{}'", cleanCol);
-                continue;
-            }
-
-            // Ищем PropertyDef, уже принадлежащий классу, или создаём на лету
-            Optional<PropertyDef> existingDef =
-                    propertyDefRepository.findByClassIdAndNameIgnoreCase(objectClass.getId(), cleanCol);
-            PropertyDef def;
-            if (existingDef.isEmpty()) {
-                PropertyDataType inferredType = hasPair ? PropertyDataType.VALUELIST : guessType(col, raw, isMulti);
-                def = propertyDefService.findOrCreateDynamic(objectClass, cleanCol, inferredType, isMulti);
-                log.info("🆕 Автоматически создано свойство '{}' для класса '{}'", cleanCol, objectClass.getName());
-            } else {
-                def = existingDef.get();
-            }
-
-            // --- если есть пара колонок (valuelist / multivaluelist)
-            if (hasPair) {
-                // Не используем числовые ID из CSV: создаём/находим элементы по ИМЕНИ (значению основной колонки)
-                if (isMulti) {
-                    List<Long> ids = ensureValueListItems(def.getName(), splitMulti(raw));
-                    objectService.setValueMulti(obj, def, ids);
+            // --- обработка файла
+            String filePath = value(row, headerAlias, FILE_COL);
+            if (filePath != null && !filePath.isBlank()) {
+                if (filesDir == null) {
+                    stats.missingFiles++;
+                    log.warn("🚫 Папка '(Files)' отсутствует — пропущен файл: {}", filePath);
+                    return;
+                }
+                Path normalized = normalizeFilePath(filesDir, filePath);
+                if (Files.exists(normalized)) {
+                    try (InputStream is = Files.newInputStream(normalized)) {
+                        MockMultipartFile multipart = new MockMultipartFile(
+                                normalized.getFileName().toString(),
+                                normalized.getFileName().toString(),
+                                Files.probeContentType(normalized),
+                                is
+                        );
+                        FileService.SaveOptions options = FileService.SaveOptions.builder()
+                                .skipIndexing(true)
+                                .targetVersionId(importVersion.getId())
+                                .versionComment(importVersion.getComment())
+                                .build();
+                        fileService.saveFile(obj.getId(), multipart, options);
+                    }
                 } else {
-                    Long id = ensureValueListItem(def.getName(), raw.trim());
-                    objectService.setValue(obj, def, id);
+                    stats.missingFiles++;
+                    log.warn("🚫 Файл отсутствует: {}", normalized);
                 }
-                continue;
             }
-
-            // --- обычные свойства
-            switch (def.getDataType()) {
-                case BOOLEAN -> objectService.setValue(obj, def, parseBoolean(raw));
-                case DATE -> {
-                    LocalDateTime dt = tryParseDate(raw);
-                    if (dt != null) objectService.setValue(obj, def, dt.toLocalDate().atStartOfDay());
+        } catch (Exception processingError) {
+            if (createdVersion) {
+                try {
+                    objectVersionService.deleteVersion(importVersion.getId());
+                } catch (Exception cleanupError) {
+                    log.error("Не удалось удалить версию {} после ошибки импорта: {}", importVersion.getId(), cleanupError.getMessage());
                 }
-                default -> objectService.setValue(obj, def, raw);
             }
-        }
-
-        // --- обработка файла
-        String filePath = value(row, headerAlias, FILE_COL);
-        if (filePath != null && !filePath.isBlank()) {
-            if (filesDir == null) {
-                stats.missingFiles++;
-                log.warn("🚫 Папка '(Files)' отсутствует — пропущен файл: {}", filePath);
-                return;
-            }
-            Path normalized = normalizeFilePath(filesDir, filePath);
-            if (Files.exists(normalized)) {
-                try (InputStream is = Files.newInputStream(normalized)) {
-                    MockMultipartFile multipart = new MockMultipartFile(
-                            normalized.getFileName().toString(),
-                            normalized.getFileName().toString(),
-                            Files.probeContentType(normalized),
-                            is
-                    );
-                    fileService.saveFile(obj.getId(), multipart);
-                }
-            } else {
-                stats.missingFiles++;
-                log.warn("🚫 Файл отсутствует: {}", normalized);
-            }
+            throw processingError;
         }
     }
 
@@ -451,58 +492,6 @@ public class MFilesImportService {
         return type;
     }
 
-    /**
-     * Специальный апсерт для валюлистов + установка значения(й)
-     */
-    private void upsertValuelistAndSet(ObjectEntity obj, ObjectClass objectClass, String propName, String raw, boolean isMulti) {
-        if (raw == null || raw.isBlank()) return;
-
-        // создаём PropertyDef
-        PropertyDef def = propertyDefService.findOrCreateDynamic(objectClass, propName, PropertyDataType.VALUELIST, isMulti);
-        if (def == null) {
-            log.warn("⚠️ Пропущена установка значения для '{}': PropertyDef не найден у класса '{}'",
-                    propName, objectClass.getName());
-            return;
-        }
-
-        // создаём / находим ValueList
-        ValueList vl = valueListService.upsertByName(propName);
-
-        // связываем PropertyDef с ValueList, если ещё не связано
-        if (def.getValueList() == null || !Objects.equals(def.getValueList().getId(), vl.getId())) {
-            def.setValueList(vl);
-            propertyDefRepository.save(def); // 🧩 сохраняем связь
-            log.info("🔗 Связали PropertyDef '{}' с ValueList '{}'", def.getName(), vl.getName());
-        }
-
-        // далее установка значений
-        setValuelist(obj, def, raw, isMulti);
-    }
-
-
-    /**
-     * Унифицированная установка VALUELIST (single/multi) для уже созданного PropertyDef
-     */
-    private void setValuelist(ObjectEntity obj, PropertyDef def, String raw, boolean isMulti) {
-        if (raw == null || raw.isBlank()) return;
-
-        ValueList vl = valueListService.upsertByName(def.getName());
-        if (def.getValueList() == null || !Objects.equals(def.getValueList().getId(), vl.getId())) {
-            def.setValueList(vl);
-            propertyDefRepository.save(def);
-            log.info("🔗 Связали PropertyDef '{}' с ValueList '{}'", def.getName(), vl.getName());
-        }
-
-        if (isMulti) {
-            List<Long> ids = ensureValueListItems(def.getName(), splitMulti(raw));
-            objectService.setValueMulti(obj, def, ids);
-        } else {
-            Long id = ensureValueListItem(def.getName(), raw.trim());
-            objectService.setValue(obj, def, id);
-        }
-    }
-
-
     private List<String> splitMulti(String raw) {
         return Arrays.stream(raw.split(MULTI_SPLIT_REGEX))
                 .map(String::trim)
@@ -515,31 +504,55 @@ public class MFilesImportService {
         return raw != null && raw.matches(".*[;,].*");
     }
 
-    private Long ensureValueListItem(String valueListName, String itemName) {
-        ValueList vl = valueListService.upsertByName(valueListName);
-        ValueListItem item = valueListService.upsertItem(vl, itemName);
+    private PropertyDef ensureValueListProperty(PropertyDef def, Boolean shouldBeMultiselect) {
+        boolean changed = false;
+
+        if (def.getDataType() != PropertyDataType.VALUELIST) {
+            def.setDataType(PropertyDataType.VALUELIST);
+            changed = true;
+        }
+
+        boolean currentMulti = Boolean.TRUE.equals(def.getIsMultiselect());
+        if (shouldBeMultiselect != null && shouldBeMultiselect != currentMulti) {
+            def.setIsMultiselect(shouldBeMultiselect);
+            changed = true;
+        }
+
+        ValueList ensuredList = valueListService.upsertByName(def.getName());
+        if (def.getValueList() == null || !Objects.equals(def.getValueList().getId(), ensuredList.getId())) {
+            def.setValueList(ensuredList);
+            changed = true;
+        }
+
+        if (changed) {
+            def = propertyDefRepository.save(def);
+        }
+
+        return def;
+    }
+
+    private Long ensureValueListItem(PropertyDef def, String itemName) {
+        PropertyDef synced = def.getValueList() == null ? ensureValueListProperty(def, null) : def;
+        ValueList target = synced.getValueList();
+        if (target == null || target.getId() == null) {
+            throw new IllegalStateException("ValueList is not associated with property '" + synced.getName() + "'");
+        }
+        ValueListItem item = valueListService.upsertItem(target.getId(), itemName);
         return item.getId();
     }
 
-    private List<Long> ensureValueListItems(String valueListName, List<String> items) {
-        ValueList vl = valueListService.upsertByName(valueListName);
+    private List<Long> ensureValueListItems(PropertyDef def, List<String> items) {
+        PropertyDef synced = ensureValueListProperty(def, true);
+        ValueList target = synced.getValueList();
+        if (target == null || target.getId() == null) {
+            throw new IllegalStateException("ValueList is not associated with property '" + synced.getName() + "'");
+        }
         List<Long> ids = new ArrayList<>(items.size());
         for (String name : items) {
-            ValueListItem item = valueListService.upsertItem(vl, name);
+            ValueListItem item = valueListService.upsertItem(target.getId(), name);
             ids.add(item.getId());
         }
         return ids;
-    }
-
-    private void setBooleanIfPresent(ObjectEntity obj, String prop, String raw) {
-        if (raw == null || raw.isBlank()) return;
-        objectService.setValue(obj, prop, parseBoolean(raw));
-    }
-
-    private void setDateIfPresent(ObjectEntity obj, String prop, String raw) {
-        if (raw == null || raw.isBlank()) return;
-        LocalDateTime dt = tryParseDate(raw);
-        if (dt != null) objectService.setValue(obj, prop, dt);
     }
 
     // ===== ALIAS- and normalization-aware helpers =====
@@ -581,30 +594,87 @@ public class MFilesImportService {
     }
 
     private PropertyDataType guessType(String name, String value, boolean isMulti) {
-        String n = name.toLowerCase(Locale.ROOT);
-        if (n.contains("date") || n.contains("created") || n.contains("modified")) return PropertyDataType.DATE;
-        if (Set.of("yes", "no", "true", "false", "1", "0").contains(value.toLowerCase(Locale.ROOT)))
+        String normalizedName = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        String normalizedValue = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+
+        if (!normalizedValue.isEmpty() && looksLikeDateValue(value)) {
+            return PropertyDataType.DATE;
+        }
+        if (normalizedName.contains("date") || normalizedName.contains("created") || normalizedName.contains("modified")) {
+            return PropertyDataType.DATE;
+        }
+        if (BOOLEAN_LITERALS.contains(normalizedValue)) {
             return PropertyDataType.BOOLEAN;
-        // По умолчанию считаем текстом; VALUELIST определяется только наличием пары [id<:ver>]
+        }
         return PropertyDataType.TEXT;
     }
 
     private boolean parseBoolean(String v) {
-        String s = v.trim().toLowerCase(Locale.ROOT);
+        String s = v == null ? "" : v.trim().toLowerCase(Locale.ROOT);
         return s.equals("yes") || s.equals("true") || s.equals("1");
     }
 
     private LocalDateTime tryParseDate(String raw) {
-        if (raw == null || raw.isBlank()) return null;
-        List<String> fmts = List.of("yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd",
-                "M/d/yyyy H:mm", "M/d/yyyy");
-        for (String f : fmts) {
+        return parseFlexibleDateTime(raw);
+    }
+
+    private boolean looksLikeDateValue(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        String trimmed = raw.trim();
+        return DATE_VALUE_PATTERN.matcher(trimmed).matches() || ISO_DATE_PATTERN.matcher(trimmed).matches();
+    }
+
+    private Instant parseDateToInstant(String raw) {
+        LocalDateTime dt = parseFlexibleDateTime(raw);
+        return dt == null ? null : dt.atZone(IMPORT_ZONE).toInstant();
+    }
+
+    private LocalDateTime parseFlexibleDateTime(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String normalized = normalizeTwoDigitYear(raw.trim());
+        if (normalized.endsWith("Z") && normalized.contains("T")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        normalized = normalized.replaceAll("\\s+", " ");
+
+        for (DateFormatSpec spec : DATE_FORMATS) {
             try {
-                return LocalDateTime.parse(raw.trim(), DateTimeFormatter.ofPattern(f));
-            } catch (Exception ignored) {
+                if (spec.dateOnly()) {
+                    LocalDate date = LocalDate.parse(normalized, spec.formatter());
+                    return date.atStartOfDay();
+                }
+                return LocalDateTime.parse(normalized, spec.formatter());
+            } catch (DateTimeParseException ignored) {
             }
         }
         return null;
+    }
+
+    private String normalizeTwoDigitYear(String raw) {
+        String trimmed = raw == null ? "" : raw.trim();
+        Matcher matcher = TWO_DIGIT_YEAR_PATTERN.matcher(trimmed);
+        if (matcher.matches()) {
+            int year = Integer.parseInt(matcher.group(2));
+            int normalizedYear = year >= 50 ? 1900 + year : 2000 + year;
+            return matcher.group(1) + normalizedYear + matcher.group(3);
+        }
+        return trimmed;
+    }
+
+    private static DateFormatSpec format(String pattern, boolean dateOnly) {
+        return new DateFormatSpec(
+                DateTimeFormatter.ofPattern(pattern)
+                        .withLocale(Locale.US)
+                        .withResolverStyle(ResolverStyle.STRICT),
+                dateOnly
+        );
+    }
+
+    private record DateFormatSpec(DateTimeFormatter formatter, boolean dateOnly) {
     }
 
     private Path normalizeFilePath(Path baseDir, String csvPath) {

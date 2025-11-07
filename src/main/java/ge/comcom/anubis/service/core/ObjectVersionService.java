@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -238,6 +239,10 @@ public class ObjectVersionService {
      * Automatically creates a new version for a given object.
      */
     public ObjectVersionEntity createNewVersion(Long objectId, String comment) {
+        return createNewVersion(objectId, comment, Instant.now(), null);
+    }
+
+    public ObjectVersionEntity createNewVersion(Long objectId, String comment, Instant createdAt, Instant modifiedAt) {
         ObjectEntity object = objectRepository.findById(objectId)
                 .orElseThrow(() -> new EntityNotFoundException("Object not found: " + objectId));
 
@@ -247,9 +252,12 @@ public class ObjectVersionService {
         ObjectVersionEntity entity = ObjectVersionEntity.builder()
                 .object(object)
                 .versionNumber(newVersion)
-                .createdAt(Instant.now())
                 .comment(comment != null ? comment : "Auto-created version")
                 .build();
+
+        Instant effectiveCreatedAt = createdAt != null ? createdAt : Instant.now();
+        entity.setCreatedAt(effectiveCreatedAt);
+        entity.setModifiedAt(modifiedAt != null ? modifiedAt : effectiveCreatedAt);
 
         var currentUser = UserContext.getCurrentUser();
         Optional<User> author = resolveOrProvisionUser(currentUser);
@@ -260,8 +268,81 @@ public class ObjectVersionService {
         auditService.logAction(saved, VersionChangeType.VERSION_CREATED, actorId,
                 "Created new version " + newVersion);
 
-        log.info("Auto-created version {} for object {}", newVersion, objectId);
+        log.info("Auto-created version {} for object {} (createdAt={})", newVersion, objectId, saved.getCreatedAt());
         return saved;
+    }
+
+    /**
+     * Возвращает существующую версию с указанным комментарием или создаёт новую, обновляя временные метки.
+     * Используется при импорте, чтобы не плодить множество однотипных версий.
+     */
+    public VersionAcquisition acquireVersionForComment(
+            Long objectId,
+            String comment,
+            Instant createdAt,
+            Instant modifiedAt
+    ) {
+        Optional<ObjectVersionEntity> existing = versionRepository
+                .findTopByObject_IdAndCommentIgnoreCaseOrderByVersionNumberDesc(objectId, comment);
+
+        if (existing.isPresent()) {
+            ObjectVersionEntity version = existing.get();
+            boolean changed = false;
+
+            if (createdAt != null && !Objects.equals(version.getCreatedAt(), createdAt)) {
+                version.setCreatedAt(createdAt);
+                changed = true;
+            }
+
+            Instant effectiveModified = modifiedAt != null
+                    ? modifiedAt
+                    : (createdAt != null ? createdAt : version.getModifiedAt());
+            if (effectiveModified != null && !Objects.equals(version.getModifiedAt(), effectiveModified)) {
+                version.setModifiedAt(effectiveModified);
+                changed = true;
+            }
+
+            if (changed) {
+                version = versionRepository.save(version);
+            }
+
+            return new VersionAcquisition(version, false);
+        }
+
+        Integer lastVersionNumber = versionRepository.findLastVersionNumber(objectId);
+        if (lastVersionNumber != null && lastVersionNumber == 1) {
+            ObjectVersionEntity singleVersion = versionRepository.findTopByObject_IdOrderByVersionNumberDesc(objectId)
+                    .orElseThrow(() -> new EntityNotFoundException("Object has no versions: " + objectId));
+
+            boolean changed = false;
+
+            if (comment != null && !comment.equalsIgnoreCase(Optional.ofNullable(singleVersion.getComment()).orElse(""))) {
+                singleVersion.setComment(comment);
+                changed = true;
+            }
+
+            if (createdAt != null && !Objects.equals(singleVersion.getCreatedAt(), createdAt)) {
+                singleVersion.setCreatedAt(createdAt);
+                changed = true;
+            }
+
+            Instant effectiveModified = modifiedAt != null
+                    ? modifiedAt
+                    : (createdAt != null ? createdAt : singleVersion.getModifiedAt());
+            if (effectiveModified != null && !Objects.equals(singleVersion.getModifiedAt(), effectiveModified)) {
+                singleVersion.setModifiedAt(effectiveModified);
+                changed = true;
+            }
+
+            if (changed) {
+                singleVersion = versionRepository.save(singleVersion);
+            }
+
+            return new VersionAcquisition(singleVersion, false);
+        }
+
+        ObjectVersionEntity created = createNewVersion(objectId, comment, createdAt, modifiedAt);
+        return new VersionAcquisition(created, true);
     }
 
     private Optional<User> resolveOrProvisionUser(User contextUser) {
@@ -310,6 +391,9 @@ public class ObjectVersionService {
     public ObjectVersionEntity getOrCreateLatestVersion(Long objectId) {
         return versionRepository.findTopByObject_IdOrderByVersionNumberDesc(objectId)
                 .orElseGet(() -> createNewVersion(objectId, "Auto-created version"));
+    }
+
+    public record VersionAcquisition(ObjectVersionEntity version, boolean createdNew) {
     }
 
 

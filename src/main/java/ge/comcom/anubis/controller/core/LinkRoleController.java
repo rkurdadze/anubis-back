@@ -1,8 +1,7 @@
 package ge.comcom.anubis.controller.core;
 
 import ge.comcom.anubis.entity.core.LinkRole;
-import ge.comcom.anubis.enums.LinkDirection;
-import ge.comcom.anubis.repository.core.LinkRoleRepository;
+import ge.comcom.anubis.service.core.LinkRoleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -13,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import jakarta.persistence.EntityNotFoundException;
 
 /**
  * REST controller for managing relationship roles (LinkRole).
@@ -27,7 +27,7 @@ import java.util.List;
 @Tag(name = "Link Roles", description = "API for managing relationship roles used in object links")
 public class LinkRoleController {
 
-    private final LinkRoleRepository linkRoleRepository;
+    private final LinkRoleService linkRoleService;
 
     // ============================================================
     // GET ALL ROLES
@@ -46,7 +46,7 @@ public class LinkRoleController {
             description = "Returns all relationship roles (link_role) configured in the system.")
     @ApiResponse(responseCode = "200", description = "Roles retrieved successfully.")
     public ResponseEntity<List<LinkRole>> getAllRoles() {
-        return ResponseEntity.ok(linkRoleRepository.findAll());
+        return ResponseEntity.ok(linkRoleService.findAll());
     }
 
     // ============================================================
@@ -71,7 +71,7 @@ public class LinkRoleController {
     public ResponseEntity<LinkRole> getRoleById(
             @Parameter(description = "Role ID", example = "10") @PathVariable Long id
     ) {
-        return linkRoleRepository.findById(id)
+        return linkRoleService.findById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -99,7 +99,7 @@ public class LinkRoleController {
             @Parameter(description = "Role name (case-insensitive)", example = "Customer")
             @PathVariable String name
     ) {
-        return linkRoleRepository.findByNameIgnoreCase(name)
+        return linkRoleService.findByNameIgnoreCase(name)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -128,7 +128,7 @@ public class LinkRoleController {
             @ApiResponse(responseCode = "400", description = "Invalid request body.")
     })
     public ResponseEntity<LinkRole> createRole(@RequestBody LinkRole role) {
-        LinkRole saved = linkRoleRepository.save(role);
+        LinkRole saved = linkRoleService.create(role);
         return ResponseEntity.ok(saved);
     }
 
@@ -149,17 +149,12 @@ public class LinkRoleController {
             @PathVariable Long id,
             @RequestBody LinkRole updatedRole
     ) {
-        return linkRoleRepository.findById(id)
-                .map(existing -> {
-                    existing.setName(updatedRole.getName());
-                    existing.setDescription(updatedRole.getDescription());
-                    existing.setNameI18n(updatedRole.getNameI18n());
-                    existing.setDirection(updatedRole.getDirection() != null ? updatedRole.getDirection() : LinkDirection.UNI);
-                    existing.setIsActive(updatedRole.getIsActive());
-                    LinkRole saved = linkRoleRepository.save(existing);
-                    return ResponseEntity.ok(saved);
-                })
-                .orElse(ResponseEntity.notFound().build());
+        try {
+            LinkRole saved = linkRoleService.update(id, updatedRole);
+            return ResponseEntity.ok(saved);
+        } catch (EntityNotFoundException ex) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     // ============================================================
@@ -176,10 +171,11 @@ public class LinkRoleController {
             @ApiResponse(responseCode = "404", description = "Role not found.")
     })
     public ResponseEntity<Void> deleteRole(@PathVariable Long id) {
-        if (!linkRoleRepository.existsById(id)) {
+        try {
+            linkRoleService.delete(id);
+            return ResponseEntity.noContent().build();
+        } catch (EntityNotFoundException ex) {
             return ResponseEntity.notFound().build();
         }
-        linkRoleRepository.deleteById(id);
-        return ResponseEntity.noContent().build();
     }
 }
