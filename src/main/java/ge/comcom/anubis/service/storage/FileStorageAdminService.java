@@ -14,7 +14,7 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 
 /**
- * Сервис управления физическими хранилищами файлов.
+ * Service for managing physical file storage configurations.
  */
 @Service
 @RequiredArgsConstructor
@@ -41,6 +41,7 @@ public class FileStorageAdminService {
         applyRequest(entity, request);
 
         if (entity.isDefaultStorage()) {
+            enforceDatabaseDefaultForFirstStorage(entity);
             clearExistingDefault(null);
         }
 
@@ -65,7 +66,7 @@ public class FileStorageAdminService {
         }
 
         if (!entity.isDefaultStorage() && wasDefault) {
-            // Никаких дополнительных действий, но проверим, что активные vault'ы не останутся без default storage
+            // No additional action is required, but make sure active vaults keep their default storage
             if (vaultRepository.existsByDefaultStorage_IdAndActiveTrue(id)) {
                 throw new IllegalStateException("Cannot remove default flag while active vaults rely on this storage");
             }
@@ -81,7 +82,7 @@ public class FileStorageAdminService {
             throw new IllegalStateException("Cannot delete storage assigned as default to active vaults");
         }
         if (entity.isDefaultStorage()) {
-            // гарантируем, что не останется системного default после удаления
+            // Ensure system-wide default flag is cleared when this storage is removed
             fileStorageRepository.findByDefaultStorageTrue()
                     .filter(existing -> existing.getId().equals(id))
                     .ifPresent(existing -> {
@@ -121,5 +122,22 @@ public class FileStorageAdminService {
                     existing.setDefaultStorage(false);
                     fileStorageRepository.save(existing);
                 });
+    }
+
+    private void enforceDatabaseDefaultForFirstStorage(FileStorageEntity entity) {
+        if (!entity.isDefaultStorage()) {
+            return;
+        }
+
+        if (fileStorageRepository.count() > 0) {
+            return;
+        }
+
+        entity.setKind(StorageKindEnum.DB);
+        entity.setBasePath(null);
+        entity.setBucket(null);
+        entity.setEndpoint(null);
+        entity.setAccessKey(null);
+        entity.setSecretKey(null);
     }
 }

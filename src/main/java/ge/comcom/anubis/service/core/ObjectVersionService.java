@@ -4,6 +4,7 @@ import ge.comcom.anubis.dto.ObjectVersionDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.entity.core.PropertyValue;
+import ge.comcom.anubis.entity.core.PropertyValueMulti;
 import ge.comcom.anubis.entity.security.User;
 import ge.comcom.anubis.entity.meta.ClassProperty;
 import ge.comcom.anubis.entity.meta.PropertyDef;
@@ -13,6 +14,7 @@ import ge.comcom.anubis.repository.core.ObjectRepository;
 import ge.comcom.anubis.repository.core.ObjectVersionRepository;
 import ge.comcom.anubis.repository.meta.ClassPropertyRepository;
 import ge.comcom.anubis.repository.meta.PropertyValueRepository;
+import ge.comcom.anubis.repository.core.PropertyValueMultiRepository;
 import ge.comcom.anubis.repository.security.UserRepository;
 import ge.comcom.anubis.util.UserContext;
 import jakarta.persistence.EntityNotFoundException;
@@ -25,6 +27,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -55,6 +58,7 @@ public class ObjectVersionService {
     private final ObjectVersionAuditService auditService;
     private final ClassPropertyRepository classPropertyRepository;
     private final PropertyValueRepository propertyValueRepository;
+    private final PropertyValueMultiRepository propertyValueMultiRepository;
     private final ObjectVersionMapper versionMapper;
     private final UserRepository userRepository;
 
@@ -247,6 +251,12 @@ public class ObjectVersionService {
                 .orElseThrow(() -> new EntityNotFoundException("Object not found: " + objectId));
 
         Integer lastVersion = versionRepository.findLastVersionNumber(objectId);
+        ObjectVersionEntity previousVersion = null;
+        if (lastVersion != null) {
+            previousVersion = versionRepository.findTopByObject_IdOrderByVersionNumberDesc(objectId)
+                    .orElse(null);
+        }
+
         int newVersion = (lastVersion == null ? 1 : lastVersion + 1);
 
         ObjectVersionEntity entity = ObjectVersionEntity.builder()
@@ -264,6 +274,7 @@ public class ObjectVersionService {
         author.ifPresent(entity::setCreatedBy);
 
         ObjectVersionEntity saved = versionRepository.save(entity);
+        copyPropertyValues(previousVersion, saved);
         Long actorId = author.map(User::getId).orElse(null);
         auditService.logAction(saved, VersionChangeType.VERSION_CREATED, actorId,
                 "Created new version " + newVersion);
@@ -273,8 +284,8 @@ public class ObjectVersionService {
     }
 
     /**
-     * Возвращает существующую версию с указанным комментарием или создаёт новую, обновляя временные метки.
-     * Используется при импорте, чтобы не плодить множество однотипных версий.
+     * Returns an existing version with the specified comment or creates a new one while updating timestamps.
+     * Used during imports to avoid creating redundant versions for the same snapshot.
      */
     public VersionAcquisition acquireVersionForComment(
             Long objectId,
@@ -375,6 +386,45 @@ public class ObjectVersionService {
 
         log.warn("Unable to resolve current user for version tracking: missing identifier and username");
         return Optional.empty();
+    }
+
+    private void copyPropertyValues(ObjectVersionEntity source, ObjectVersionEntity target) {
+        if (source == null || target == null) {
+            return;
+        }
+
+        List<PropertyValue> sourceValues = propertyValueRepository.findAllByObjectVersionId(source.getId());
+        if (sourceValues.isEmpty()) {
+            return;
+        }
+
+        if (target.getPropertyValues() == null) {
+            target.setPropertyValues(new ArrayList<>());
+        }
+
+        for (PropertyValue value : sourceValues) {
+            PropertyValue clone = PropertyValue.builder()
+                    .objectVersion(target)
+                    .propertyDef(value.getPropertyDef())
+                    .valueText(value.getValueText())
+                    .valueNumber(value.getValueNumber())
+                    .valueDate(value.getValueDate())
+                    .valueBoolean(value.getValueBoolean())
+                    .refObject(value.getRefObject())
+                    .valueListItem(value.getValueListItem())
+                    .build();
+
+            PropertyValue persisted = propertyValueRepository.save(clone);
+            target.getPropertyValues().add(persisted);
+
+            List<PropertyValueMulti> multiValues = propertyValueMultiRepository.findAllByPropertyValueId(value.getId());
+            for (PropertyValueMulti multi : multiValues) {
+                PropertyValueMulti cloneMulti = new PropertyValueMulti();
+                cloneMulti.setPropertyValue(persisted);
+                cloneMulti.setValueListItem(multi.getValueListItem());
+                propertyValueMultiRepository.save(cloneMulti);
+            }
+        }
     }
 
     /**
