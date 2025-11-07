@@ -21,8 +21,11 @@ RUN apt-get update && \
         tesseract-ocr-eng \
         tesseract-ocr-rus \
         tesseract-ocr-geo \
+        libtesseract-dev \
+        fonts-dejavu-core \
         curl imagemagick && \
     rm -rf /var/lib/apt/lists/*
+
 
 # --- Установка лучших моделей Tesseract ---
 RUN mkdir -p /usr/share/tesseract-ocr/5/tessdata && \
@@ -32,6 +35,7 @@ RUN mkdir -p /usr/share/tesseract-ocr/5/tessdata && \
         https://github.com/tesseract-ocr/tessdata_best/raw/main/${lang}.traineddata || \
         (echo "⚠️ Warning: failed to download ${lang}.traineddata, falling back to default package"); \
     done
+
 
 # --- Настройки окружения ---
 ENV APP_HOME=/opt/anubis

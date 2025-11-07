@@ -64,6 +64,27 @@ public class FullTextSearchService {
 
     @PostConstruct
     private void initEngines() {
+        if (!Files.exists(Path.of("/.dockerenv"))) {
+            System.setProperty("sun.java2d.fontpath", "/Library/Fonts:/System/Library/Fonts");
+        }
+
+
+        // 🔧 Настройка PDFBox — чтобы избежать "Unknown charstring command..." и включить fallback-шрифты
+        try {
+            String fontDirs = System.getenv().getOrDefault("PDFBOX_FONTDIR",
+                    "/Library/Fonts:/System/Library/Fonts");
+            String fontCache = "/tmp/pdf-font-cache";
+
+            System.setProperty("pdfbox.fontdir", fontDirs);
+            System.setProperty("pdfbox.fontcache", fontCache);
+            System.setProperty("org.apache.pdfbox.rendering.UseFallbackFonts", "true");
+
+            log.info("🖋 PDFBox fonts configured: fontdir={}, fontcache={}, fallbackFonts=true", fontDirs, fontCache);
+        } catch (Exception e) {
+            log.warn("⚠️ PDFBox font initialization failed: {}", e.getMessage());
+        }
+
+
         // 🔹 Language detection
         if (languageDetectProperties.isEnabled()) {
             try {
@@ -180,6 +201,15 @@ public class FullTextSearchService {
             log.info("OCR initialized: path={}, languages={}, os={}, docker={}, lib={}",
                     tessdataPath, ocrProperties.getLanguages(), os, isContainer, libPath);
 
+            // --- Регистрируем ImageIO-плагины (TwelveMonkeys и системные декодеры) ---
+            try {
+                ImageIO.scanForPlugins();
+                log.info("✅ ImageIO plugins scanned and registered (JPEG/TIFF via TwelveMonkeys)");
+            } catch (Exception e) {
+                log.warn("⚠️ Failed to scan ImageIO plugins: {}", e.getMessage());
+            }
+
+
         } catch (Exception e) {
             log.error("❌ OCR initialization failed: {}", e.getMessage(), e);
             ocr = null;
@@ -261,6 +291,12 @@ public class FullTextSearchService {
                     runOcr = true;
                 }
             }
+
+            if (pdfLike) {
+                log.debug("Skipping OCR for PDF (safety mode) – handled by Tika only: {}", fileEntity.getFileName());
+                runOcr = false;
+            }
+
 
             String ocrText = "";
             if (runOcr) {
@@ -506,15 +542,36 @@ public class FullTextSearchService {
         }
     }
 
+    /**
+     * Извлечение текста через Apache Tika без ограничения 100 000 символов.
+     * Использует BodyContentHandler(-1), чтобы сохранить весь текст.
+     */
     private String parseToString(File file) throws IOException, TikaException {
-        try {
-            return tika.parseToString(file);
+        try (InputStream stream = new FileInputStream(file)) {
+            org.apache.tika.parser.AutoDetectParser parser =
+                    new org.apache.tika.parser.AutoDetectParser();
+            org.apache.tika.metadata.Metadata metadata = new org.apache.tika.metadata.Metadata();
+
+            // ❗ отключаем ограничение длины текста (-1 = без лимита)
+            org.apache.tika.sax.BodyContentHandler handler =
+                    new org.apache.tika.sax.BodyContentHandler(-1);
+
+            org.apache.tika.parser.ParseContext context =
+                    new org.apache.tika.parser.ParseContext();
+            context.set(org.apache.tika.parser.AutoDetectParser.class, parser);
+
+            parser.parse(stream, handler, metadata, context);
+            return handler.toString();
         } catch (NoSuchMethodError e) {
             log.error("Tika parse failed due to missing SystemProperties#getUserName: {}. Returning empty text for {}.",
                     e.getMessage(), file.getName());
             return "";
+        } catch (Exception e) {
+            log.error("Tika parse error for {}: {}", file.getName(), e.getMessage(), e);
+            return "";
         }
     }
+
 
 
     /**

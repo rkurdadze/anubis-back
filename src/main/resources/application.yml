@@ -30,11 +30,6 @@ spring:
 server:
   port: 4100
 
-logging:
-  level:
-    root: INFO
-    org.flywaydb: INFO
-
 
 # ==========================
 # 🔍 ANUBIS Custom Settings
@@ -42,7 +37,6 @@ logging:
 anubis:
   ocr:
     enabled: ${ANUBIS_OCR_ENABLED:true}
-    # Автоматически использует правильный путь в зависимости от ОС, не задаём дефолт Linux
     datapath: ${TESSDATA_PREFIX:${ANUBIS_OCR_DATAPATH:}}
     languages: ${ANUBIS_OCR_LANGUAGES:kat+eng+rus}
     psm: ${ANUBIS_OCR_PSM:3}
@@ -52,23 +46,13 @@ anubis:
     combine-with-tika: ${ANUBIS_OCR_COMBINE_WITH_TIKA:true}
     dpi: ${ANUBIS_OCR_DPI:300}
 
-
-  # --------------------------
-  # 🌐 Language Detection
-  # --------------------------
   language-detect:
     enabled: ${ANUBIS_LANGUAGE_DETECT_ENABLED:true}
 
-  # --------------------------
-  # 📄 Apache Tika Settings
-  # --------------------------
   tika:
-    max-content-length: ${ANUBIS_TIKA_MAX_CONTENT_LENGTH:10485760}  # 10 MB
+    max-content-length: ${ANUBIS_TIKA_MAX_CONTENT_LENGTH:10485760}
     parse-timeout-seconds: ${ANUBIS_TIKA_TIMEOUT:30}
 
-  # --------------------------
-  # 💾 File Storage Settings
-  # --------------------------
   storage:
     temp-dir: ${ANUBIS_STORAGE_TMP:/tmp/anubis}
     external-base-path: ${ANUBIS_STORAGE_FS:/data/anubis}
@@ -79,3 +63,24 @@ anubis:
       base-url: ${ANUBIS_GOTENBERG_URL:http://localhost:3000}
       connect-timeout: ${ANUBIS_GOTENBERG_CONNECT_TIMEOUT:5s}
       read-timeout: ${ANUBIS_GOTENBERG_READ_TIMEOUT:60s}
+
+  # ==========================
+  # 🧩 PDF / OCR / Fonts Settings
+  # ==========================
+  pdfbox:
+    fontdir: /Library/Fonts:/System/Library/Fonts
+    fontcache: /tmp/pdf-font-cache
+    use-fallback-fonts: true
+
+
+# ==========================
+# 🪵 Logging configuration
+# ==========================
+logging:
+  level:
+    root: INFO
+    org.flywaydb: INFO
+    org.apache.fontbox.cff: ERROR  # 🔇 подавляем лишние предупреждения
+    org.apache.pdfbox.pdmodel.font.PDType0Font: ERROR
+    org.apache.pdfbox.pdmodel.font.PDSimpleFont: ERROR
+    org.apache.pdfbox.pdmodel.font: ERROR
