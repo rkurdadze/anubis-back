@@ -274,36 +274,73 @@ public class FileService {
     @Transactional
     public void deleteFile(Long fileId) {
         ObjectFileEntity file = getFile(fileId);
-        var strategy = strategyRegistry.resolve(file.getStorage());
         var user = UserContext.getCurrentUser();
+
+        Long objectId = file.getVersion().getObject().getId();
+        String fileName = file.getFileName();
+        ObjectVersionEntity newVersion = versionService.createNewVersion(
+                objectId,
+                "File deleted: " + fileName
+        );
+
+        FileStorageEntity storage = file.getStorage();
+        if (storage == null) {
+            storage = vaultService.resolveStorageForObject(newVersion.getObject());
+        }
+
+        var strategy = strategyRegistry.resolve(storage);
 
         try {
             strategy.delete(file);
         } catch (IOException e) {
-            log.error("Failed to delete file content for '{}': {}", file.getFileName(), e.getMessage());
+            log.error("Failed to delete file content for '{}': {}", fileName, e.getMessage());
         }
 
         fileRepository.delete(file);
 
         auditService.logAction(
-                file.getVersion(),
+                newVersion,
                 VersionChangeType.FILE_REMOVED,
                 user.getId(),
-                "File deleted: " + file.getFileName()
+                "File deleted: " + fileName
         );
 
-        log.warn("File '{}' deleted by {}", file.getFileName(), user.getUsername());
+        log.warn(
+                "File '{}' deleted by {} (new version={})",
+                fileName,
+                user.getUsername(),
+                newVersion.getVersionNumber()
+        );
     }
 
     @Transactional
     public ObjectFileDto updateFile(Long fileId, MultipartFile newFile) throws IOException {
         ObjectFileEntity file = getFile(fileId);
-        var strategy = strategyRegistry.resolve(file.getStorage());
         var user = UserContext.getCurrentUser();
+
+        String incomingName = newFile.getOriginalFilename();
+        String effectiveName = (incomingName != null && !incomingName.isBlank())
+                ? incomingName
+                : file.getFileName();
+
+        Long objectId = file.getVersion().getObject().getId();
+        ObjectVersionEntity newVersion = versionService.createNewVersion(
+                objectId,
+                "File updated: " + effectiveName
+        );
+
+        FileStorageEntity storage = file.getStorage();
+        if (storage == null) {
+            storage = vaultService.resolveStorageForObject(newVersion.getObject());
+            file.setStorage(storage);
+        }
+
+        var strategy = strategyRegistry.resolve(storage);
 
         strategy.save(file.getStorage(), file, newFile);
 
-        file.setFileName(newFile.getOriginalFilename());
+        file.setVersion(newVersion);
+        file.setFileName(effectiveName);
         file.setMimeType(newFile.getContentType());
         file.setFileSize(newFile.getSize());
 
@@ -312,13 +349,18 @@ public class FileService {
         triggerAsyncIndexing(updated);
 
         auditService.logAction(
-                file.getVersion(),
+                newVersion,
                 VersionChangeType.FILE_UPDATED,
                 user.getId(),
-                "File updated: " + file.getFileName()
+                "File updated: " + updated.getFileName()
         );
 
-        log.info("File '{}' updated by {}", file.getFileName(), user.getUsername());
+        log.info(
+                "File '{}' updated by {} (new version={})",
+                updated.getFileName(),
+                user.getUsername(),
+                newVersion.getVersionNumber()
+        );
         return objectFileMapper.toDto(updated);
     }
 
