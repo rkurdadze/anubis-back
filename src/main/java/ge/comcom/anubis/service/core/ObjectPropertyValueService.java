@@ -65,6 +65,8 @@ public class ObjectPropertyValueService {
                 buildVersionComment(changes)
         );
 
+        Set<Long> propertyIdsToKeep = new HashSet<>(preparedStates.keySet());
+        removeUnmentionedProperties(newVersion, propertyIdsToKeep);
         persistPreparedStates(newVersion.getId(), preparedStates.values());
         logPropertyChanges(newVersion, changes);
     }
@@ -287,6 +289,37 @@ public class ObjectPropertyValueService {
                 applyMultiState(versionId, state);
             } else {
                 applySingleState(versionId, state);
+            }
+        }
+    }
+
+    private void removeUnmentionedProperties(ObjectVersionEntity version, Set<Long> propertyIdsToKeep) {
+        List<PropertyValue> clonedValues = propertyValueRepository.findAllByObjectVersionId(version.getId());
+        if (clonedValues.isEmpty()) {
+            return;
+        }
+
+        List<PropertyValue> toRemove = new ArrayList<>();
+        for (PropertyValue value : clonedValues) {
+            Long propertyDefId = value.getPropertyDef() != null ? value.getPropertyDef().getId() : null;
+            if (propertyDefId == null || !propertyIdsToKeep.contains(propertyDefId)) {
+                if (value.getId() != null) {
+                    propertyValueMultiRepository.deleteAllByPropertyValueId(value.getId());
+                }
+                toRemove.add(value);
+            }
+        }
+
+        if (!toRemove.isEmpty()) {
+            propertyValueRepository.deleteAll(toRemove);
+            if (version.getPropertyValues() != null) {
+                Set<Long> removedDefIds = toRemove.stream()
+                        .map(PropertyValue::getPropertyDef)
+                        .filter(Objects::nonNull)
+                        .map(PropertyDef::getId)
+                        .collect(Collectors.toSet());
+                version.getPropertyValues().removeIf(pv -> pv.getPropertyDef() != null
+                        && removedDefIds.contains(pv.getPropertyDef().getId()));
             }
         }
     }
