@@ -29,10 +29,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
@@ -56,199 +53,220 @@ public class FullTextSearchService {
     private final LanguageDetectProperties languageDetectProperties;
 
     private final Tika tika = new Tika();
-    private Tesseract ocr;
     private LanguageDetector languageDetector;
 
     @PersistenceContext
     private EntityManager em;
 
-    @PostConstruct
-    private void initEngines() {
-        if (!Files.exists(Path.of("/.dockerenv"))) {
-            System.setProperty("sun.java2d.fontpath", "/Library/Fonts:/System/Library/Fonts");
+    // =============================================================
+    // 🧠 ThreadLocal-кэширование экземпляров Tesseract (безопасно!)
+    // =============================================================
+    private final ThreadLocal<Tesseract> ocrThreadLocal = ThreadLocal.withInitial(() -> {
+        Tesseract t = new Tesseract();
+        String tessdataPath = System.getenv().getOrDefault("TESSDATA_PREFIX",
+                "/usr/share/tesseract-ocr/tessdata");
+        t.setDatapath(tessdataPath);
+        t.setLanguage("kat+eng+rus"); // будет переопределено при initEngines()
+        t.setPageSegMode(3);
+        t.setOcrEngineMode(1);
+        try {
+            t.setTessVariable("preserve_interword_spaces", "1");
+            t.setTessVariable("user_defined_dpi", "300");
+        } catch (Exception e) {
+            log.warn("⚠️ Failed to set default Tesseract vars: {}", e.getMessage());
+        }
+        return t;
+    });
+
+    private Tesseract getTesseract() {
+        Tesseract t = ocrThreadLocal.get();
+        String datapath = System.getProperty("TESSDATA_PREFIX");
+
+        if (datapath == null || datapath.isBlank()) {
+            datapath = "/opt/homebrew/share/tessdata";
+            System.setProperty("TESSDATA_PREFIX", datapath);
+            log.warn("⚠️ TESSDATA_PREFIX not set, fallback to {}", datapath);
         }
 
+        File engFile = new File(datapath, "eng.traineddata");
+        if (!engFile.exists()) {
+            log.error("❌ Missing traineddata files in {}", datapath);
+            throw new IllegalStateException("Tesseract traineddata not found in " + datapath);
+        }
 
-        // 🔧 Настройка PDFBox — чтобы избежать "Unknown charstring command..." и включить fallback-шрифты
+        t.setDatapath(datapath);
+        t.setLanguage(ocrProperties.getLanguages());
+        t.setPageSegMode(ocrProperties.getPsm());
+        t.setOcrEngineMode(ocrProperties.getOem());
+        return t;
+    }
+
+
+    @PostConstruct
+    private void initEngines() {
+        // PDFBox настройка
         try {
-            String fontDirs = System.getenv().getOrDefault("PDFBOX_FONTDIR",
-                    "/Library/Fonts:/System/Library/Fonts");
+            String fontDirs = System.getenv().getOrDefault("PDFBOX_FONTDIR", "/Library/Fonts:/System/Library/Fonts");
             String fontCache = "/tmp/pdf-font-cache";
-
             System.setProperty("pdfbox.fontdir", fontDirs);
             System.setProperty("pdfbox.fontcache", fontCache);
             System.setProperty("org.apache.pdfbox.rendering.UseFallbackFonts", "true");
-
             log.info("🖋 PDFBox fonts configured: fontdir={}, fontcache={}, fallbackFonts=true", fontDirs, fontCache);
         } catch (Exception e) {
             log.warn("⚠️ PDFBox font initialization failed: {}", e.getMessage());
         }
 
-
-        // 🔹 Language detection
+        // Language detector
         if (languageDetectProperties.isEnabled()) {
             try {
                 languageDetector = new OptimaizeLangDetector().loadModels();
                 log.info("Language detector initialized (Optimaize)");
             } catch (Exception e) {
                 languageDetector = null;
-                log.warn("Language detector failed to initialize: {}. Skipping.", e.getMessage());
+                log.warn("Language detector failed to initialize: {}", e.getMessage());
             }
-        } else {
-            languageDetector = null;
-            log.info("Language detection disabled in configuration.");
         }
 
-        // 🔹 OCR
+        // OCR system env
         if (!ocrProperties.isEnabled()) {
             log.info("OCR disabled in configuration.");
             return;
         }
 
         try {
-            String os = System.getProperty("os.name");
-            String osLower = os.toLowerCase();
+            String os = System.getProperty("os.name").toLowerCase(Locale.ROOT);
             boolean isContainer = Files.exists(Path.of("/.dockerenv"));
-            String configuredDataPath = trimToNull(ocrProperties.getDatapath());
             String tessdataPath = null;
             String libPath = null;
 
-            log.info("Detected operating system: {}", os);
-
-            if (osLower.contains("mac") || osLower.contains("darwin")) {
+            if (os.contains("mac") || os.contains("darwin")) {
+                // --- macOS support (Intel и ARM) ---
                 Path[] dataCandidates = {
-                        Path.of("/usr/local/share/tessdata"),
-                        Path.of("/opt/homebrew/share/tessdata"),
-                        Path.of("/usr/share/tessdata")
+                        Path.of("/opt/homebrew/share/tessdata"),   // M1/M2
+                        Path.of("/usr/local/share/tessdata"),       // Intel Mac
+                        Path.of("/usr/share/tessdata")              // fallback
                 };
                 tessdataPath = Stream.of(dataCandidates)
-                        .filter(Files::exists)
+                        .filter(Files::isDirectory)
                         .map(Path::toString)
                         .findFirst()
                         .orElse("/usr/local/share/tessdata");
 
                 Path[] libCandidates = {
-                        Path.of("/usr/local/lib/libtesseract.dylib"),
-                        Path.of("/opt/homebrew/lib/libtesseract.dylib"),
-                        Path.of("/usr/local/Cellar/tesseract/5.5.1/lib/libtesseract.dylib")
+                        Path.of("/opt/homebrew/lib"),
+                        Path.of("/usr/local/lib"),
+                        Path.of("/usr/lib")
                 };
                 libPath = Stream.of(libCandidates)
-                        .filter(Files::exists)
-                        .map(path -> path.getParent().toString())
-                        .findFirst()
-                        .orElse(null);
-
-                log.info("✅ Detected macOS — using tessdata={} and library={}", tessdataPath, libPath);
+                        .filter(Files::isDirectory)
+                        .map(Path::toString)
+                        .findFirst().orElse(null);
 
                 if (libPath != null) {
                     System.setProperty("jna.library.path", libPath);
                     System.setProperty("DYLD_LIBRARY_PATH", libPath);
                 }
-            } else if (osLower.contains("linux")) {
-                tessdataPath = "/usr/share/tesseract-ocr/5/tessdata";
+                log.info("✅ Detected macOS — using tessdata={} and library={}", tessdataPath, libPath);
+
+            } else if (os.contains("linux")) {
+                // --- Linux (включая Docker) ---
+                Path[] dataCandidates = {
+                        Path.of("/usr/share/tesseract-ocr/5/tessdata"),
+                        Path.of("/usr/share/tesseract-ocr/tessdata"),
+                        Path.of("/usr/local/share/tessdata")
+                };
+                tessdataPath = Stream.of(dataCandidates)
+                        .filter(Files::isDirectory)
+                        .map(Path::toString)
+                        .findFirst()
+                        .orElse("/usr/share/tesseract-ocr/tessdata");
+
                 libPath = "/usr/lib/x86_64-linux-gnu";
-                System.setProperty("LD_LIBRARY_PATH", libPath);
                 System.setProperty("jna.library.path", libPath);
+                System.setProperty("LD_LIBRARY_PATH", libPath);
                 log.info("✅ Detected Linux — tessdata={}, lib={}", tessdataPath, libPath);
-            } else if (osLower.contains("win")) {
+
+            } else if (os.contains("win")) {
+                // --- Windows ---
                 tessdataPath = "C:\\Program Files\\Tesseract-OCR\\tessdata";
                 libPath = "C:\\Program Files\\Tesseract-OCR";
                 System.setProperty("jna.library.path", libPath);
                 log.info("✅ Detected Windows — tessdata={}, lib={}", tessdataPath, libPath);
             } else {
                 tessdataPath = "/usr/share/tesseract-ocr/tessdata";
-                log.info("Using fallback TESSDATA_PREFIX = {}", tessdataPath);
+                log.info("⚙️ Unknown OS detected. Using default tessdata path {}", tessdataPath);
             }
 
-            if (configuredDataPath != null) {
-                tessdataPath = configuredDataPath;
+            // ✅ Приоритет: конфигурация из application.yml
+            if (ocrProperties.getDatapath() != null && !ocrProperties.getDatapath().isBlank()) {
+                tessdataPath = ocrProperties.getDatapath();
                 log.info("Overriding tessdata path from configuration: {}", tessdataPath);
             }
 
-            if (tessdataPath == null) {
-                tessdataPath = "/usr/share/tesseract-ocr/tessdata";
-                log.info("Using fallback TESSDATA_PREFIX = {}", tessdataPath);
+            // ✅ Проверка существования и fallback
+            if (!Files.isDirectory(Path.of(tessdataPath))) {
+                log.warn("⚠️ Tessdata directory not found: {} — trying fallback search", tessdataPath);
+                Path[] fallbackCandidates = {
+                        Path.of("/opt/homebrew/share/tessdata"),
+                        Path.of("/usr/local/share/tessdata"),
+                        Path.of("/usr/share/tesseract-ocr/5/tessdata"),
+                        Path.of("/usr/share/tesseract-ocr/tessdata")
+                };
+                tessdataPath = Stream.of(fallbackCandidates)
+                        .filter(Files::isDirectory)
+                        .map(Path::toString)
+                        .findFirst()
+                        .orElse(tessdataPath);
+                log.info("🔍 Fallback tessdata path resolved to {}", tessdataPath);
             }
 
             System.setProperty("TESSDATA_PREFIX", tessdataPath);
+            log.info("OCR initialized: path={}, languages={}, docker={}, lib={}",
+                    tessdataPath, ocrProperties.getLanguages(), isContainer, libPath);
 
-            // --- Создаём и настраиваем Tesseract ---
-            ocr = new Tesseract();
-            ocr.setDatapath(tessdataPath);
-            ocr.setLanguage(ocrProperties.getLanguages());
-            ocr.setPageSegMode(ocrProperties.getPsm());
-            ocr.setOcrEngineMode(ocrProperties.getOem());
-
-            if (ocrProperties.getDpi() > 0) {
-                applyTessVariable("user_defined_dpi", Integer.toString(ocrProperties.getDpi()),
-                        "установить пользовательский DPI");
-            }
-
-            applyTessVariable("preserve_interword_spaces", "1",
-                    "включить сохранение интервалов между словами");
-
-            // --- Проверяем языковые файлы ---
-            String[] langs = ocrProperties.getLanguages().split("\\+");
-            for (String lang : langs) {
-                Path langFile = Path.of(tessdataPath, lang.trim() + ".traineddata");
-                if (!Files.exists(langFile)) {
-                    log.warn("⚠️ Missing traineddata for '{}'. Try: brew install tesseract-lang", lang);
-                } else {
-                    log.debug("✅ Found traineddata for '{}'", lang);
+            // --- Глобальная установка переменной окружения для native библиотеки ---
+            if (tessdataPath != null && !tessdataPath.isBlank()) {
+                System.setProperty("TESSDATA_PREFIX", tessdataPath);
+                try {
+                    // 🪄 На macOS переменные среды могут быть изолированы — пробрасываем вручную
+                    java.lang.reflect.Field f = System.class.getDeclaredField("props");
+                    f.setAccessible(true);
+                    Properties props = (Properties) f.get(null);
+                    props.setProperty("TESSDATA_PREFIX", tessdataPath);
+                } catch (Exception ignored) {
                 }
+                log.info("🔧 Set system TESSDATA_PREFIX to {}", tessdataPath);
             }
 
-            log.info("OCR initialized: path={}, languages={}, os={}, docker={}, lib={}",
-                    tessdataPath, ocrProperties.getLanguages(), os, isContainer, libPath);
 
-            // --- Регистрируем ImageIO-плагины (TwelveMonkeys и системные декодеры) ---
-            try {
-                ImageIO.scanForPlugins();
-                log.info("✅ ImageIO plugins scanned and registered (JPEG/TIFF via TwelveMonkeys)");
-            } catch (Exception e) {
-                log.warn("⚠️ Failed to scan ImageIO plugins: {}", e.getMessage());
-            }
-
+            ImageIO.scanForPlugins();
+            log.info("✅ ImageIO plugins scanned and registered (JPEG/TIFF via TwelveMonkeys)");
 
         } catch (Exception e) {
             log.error("❌ OCR initialization failed: {}", e.getMessage(), e);
-            ocr = null;
         }
     }
-
-
-
 
     @PostConstruct
     public void testImageReaders() {
-        String[] readers = ImageIO.getReaderFormatNames();
-        log.info("🧩 ImageIO readers available: {}", String.join(", ", readers));
+        log.info("🧩 ImageIO readers available: {}", String.join(", ", ImageIO.getReaderFormatNames()));
     }
 
-    private void applyTessVariable(String key, String value, String description) {
-        if (ocr == null) {
-            log.debug("Пропуск установки переменной {} (OCR не инициализирован)", key);
-            return;
+    // =============================================================
+    // 🔍 OCR-извлечение с ThreadLocal
+    // =============================================================
+    private String extractWithOCR(File file) throws TesseractException {
+        if (!ocrProperties.isEnabled()) {
+            log.debug("🔕 OCR disabled. Skipping OCR extraction for {}", file.getName());
+            return "";
         }
-        try {
-            Method method = Tesseract.class.getMethod("setTessVariable", String.class, String.class);
-            Object result = method.invoke(ocr, key, value);
-
-            if (result instanceof Boolean booleanResult && !booleanResult) {
-                log.warn("Tesseract отклонил переменную {} при попытке {}", key, description);
-            } else {
-                log.debug("Tesseract переменная {}={} применена ({}).", key, value, description);
-            }
-        } catch (NoSuchMethodException e) {
-            log.warn("Метод setTessVariable отсутствует в tess4j — невозможно {} ({}={}).", description, key, value);
-        } catch (InvocationTargetException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            log.warn("Tesseract не смог {} ({}={}). Причина: {}", description, key, value, cause.getMessage());
-        } catch (IllegalAccessException e) {
-            log.warn("Нет доступа к setTessVariable для {} ({}={}).", description, key, value);
-        } catch (RuntimeException e) {
-            log.warn("Неожиданная ошибка при попытке {} ({}={})", description, key, value, e);
-        }
+        log.debug("🧠 Running OCR (ThreadLocal) for {}", file.getName());
+        Tesseract t = getTesseract();
+        // гарантируем актуальные параметры
+        t.setLanguage(ocrProperties.getLanguages());
+        t.setPageSegMode(ocrProperties.getPsm());
+        t.setOcrEngineMode(ocrProperties.getOem());
+        return t.doOCR(file);
     }
 
 
@@ -282,7 +300,7 @@ public class FullTextSearchService {
 
             boolean fallbackTriggered = isWeakText(tikaText);
             boolean runOcr = false;
-            if (ocrProperties.isEnabled() && ocr != null) {
+            if (ocrProperties.isEnabled()) {
                 if (imageLike) {
                     runOcr = true;
                 } else if (pdfLike) {
@@ -291,6 +309,7 @@ public class FullTextSearchService {
                     runOcr = true;
                 }
             }
+
 
             if (pdfLike) {
                 log.debug("Skipping OCR for PDF (safety mode) – handled by Tika only: {}", fileEntity.getFileName());
@@ -389,21 +408,8 @@ public class FullTextSearchService {
     }
 
 
-    /**
-     * OCR-извлечение текста.
-     */
-    private String extractWithOCR(File file) throws TesseractException {
-        if (!ocrProperties.isEnabled()) {
-            log.debug("🔕 OCR disabled. Skipping OCR extraction for {}", file.getName());
-            return "";
-        }
-
-        if (ocr == null) return "";
-        log.debug("🧠 Running OCR for {}", file.getName());
-        return ocr.doOCR(file);
-    }
-
-    private String extractWithOCR(InputStream inputStream, String originalFileName) throws IOException, TesseractException {
+    private String extractWithOCR(InputStream inputStream, String originalFileName)
+            throws IOException, TesseractException {
         String ext = originalFileName != null && originalFileName.contains(".")
                 ? originalFileName.substring(originalFileName.lastIndexOf('.') + 1)
                 : "jpg";
@@ -414,17 +420,18 @@ public class FullTextSearchService {
         }
 
         try {
-            if (ocr == null) {
-                log.warn("⚠️ OCR is not initialized, skipping OCR for {}", originalFileName);
-                return "";
-            }
-
-            log.debug("🧠 Running OCR for {} (temp file: {})", originalFileName, tempFile);
-            return ocr.doOCR(tempFile.toFile());
+            log.debug("🧠 Running OCR (ThreadLocal) for {} (temp file: {})", originalFileName, tempFile);
+            Tesseract t = getTesseract();
+            t.setLanguage(ocrProperties.getLanguages());
+            t.setPageSegMode(ocrProperties.getPsm());
+            t.setOcrEngineMode(ocrProperties.getOem());
+            return t.doOCR(tempFile.toFile());
         } finally {
             Files.deleteIfExists(tempFile);
         }
     }
+
+
 
     private String sanitizeText(String text) {
         if (text == null) {
