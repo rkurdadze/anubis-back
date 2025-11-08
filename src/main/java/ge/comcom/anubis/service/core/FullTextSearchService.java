@@ -24,12 +24,14 @@ import org.apache.tika.language.detect.LanguageDetector;
 import org.apache.tika.language.detect.LanguageResult;
 
 import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 /**
@@ -220,25 +222,43 @@ public class FullTextSearchService {
                 log.info("🔍 Fallback tessdata path resolved to {}", tessdataPath);
             }
 
+            // --- Устанавливаем TESSDATA_PREFIX системно ---
             System.setProperty("TESSDATA_PREFIX", tessdataPath);
-            log.info("OCR initialized: path={}, languages={}, docker={}, lib={}",
-                    tessdataPath, ocrProperties.getLanguages(), isContainer, libPath);
+            try {
+                java.lang.reflect.Field f = System.class.getDeclaredField("props");
+                f.setAccessible(true);
+                Properties props = (Properties) f.get(null);
+                props.setProperty("TESSDATA_PREFIX", tessdataPath);
+            } catch (Exception ignored) {}
+            log.info("🔧 Set system TESSDATA_PREFIX to {}", tessdataPath);
 
-            // --- Глобальная установка переменной окружения для native библиотеки ---
-            if (tessdataPath != null && !tessdataPath.isBlank()) {
-                System.setProperty("TESSDATA_PREFIX", tessdataPath);
+            // =========================================================
+            // 🧩 Принудительная регистрация ImageIO плагинов
+            // =========================================================
+            try {
+                javax.imageio.spi.IIORegistry registry = javax.imageio.spi.IIORegistry.getDefaultInstance();
+
+                // TwelveMonkeys plugins
+                registry.registerServiceProvider(new com.twelvemonkeys.imageio.plugins.tiff.TIFFImageReaderSpi());
+                registry.registerServiceProvider(new com.twelvemonkeys.imageio.plugins.jpeg.JPEGImageReaderSpi());
+                registry.registerServiceProvider(new com.twelvemonkeys.imageio.plugins.webp.WebPImageReaderSpi());
+
+                // JAI fallback (если доступен)
                 try {
-                    // 🪄 На macOS переменные среды могут быть изолированы — пробрасываем вручную
-                    java.lang.reflect.Field f = System.class.getDeclaredField("props");
-                    f.setAccessible(true);
-                    Properties props = (Properties) f.get(null);
-                    props.setProperty("TESSDATA_PREFIX", tessdataPath);
-                } catch (Exception ignored) {
-                }
-                log.info("🔧 Set system TESSDATA_PREFIX to {}", tessdataPath);
+                    Class<?> jaiSpi = Class.forName("com.github.jaiimageio.impl.plugins.tiff.TIFFImageReaderSpi");
+                    Object spi = jaiSpi.getDeclaredConstructor().newInstance();
+                    registry.registerServiceProvider((javax.imageio.spi.ImageReaderSpi) spi);
+                    log.info("🧩 JAI ImageIO TIFF reader registered manually");
+                } catch (ClassNotFoundException ignored) {}
+
+                // Проверим активные форматы
+                String[] readers = javax.imageio.ImageIO.getReaderFormatNames();
+                log.info("🧩 Active ImageIO readers: {}", String.join(", ", readers));
+            } catch (Exception e) {
+                log.warn("⚠️ ImageIO plugin registration failed: {}", e.getMessage());
             }
 
-
+            // =========================================================
             ImageIO.scanForPlugins();
             log.info("✅ ImageIO plugins scanned and registered (JPEG/TIFF via TwelveMonkeys)");
 
@@ -246,6 +266,7 @@ public class FullTextSearchService {
             log.error("❌ OCR initialization failed: {}", e.getMessage(), e);
         }
     }
+
 
     @PostConstruct
     public void testImageReaders() {
@@ -260,14 +281,54 @@ public class FullTextSearchService {
             log.debug("🔕 OCR disabled. Skipping OCR extraction for {}", file.getName());
             return "";
         }
-        log.debug("🧠 Running OCR (ThreadLocal) for {}", file.getName());
+
+        BufferedImage image = null;
+        try {
+            image = ImageIO.read(file);
+        } catch (IOException e) {
+            log.warn("⚠️ Cannot read {} via ImageIO: {}", file.getName(), e.getMessage());
+        }
+
+        // Fallback на ImageMagick, если ImageIO вернул null
+        if (image == null) {
+            image = convertToPngViaMagick(file);
+        }
+
+        if (image == null) {
+            log.error("❌ Unsupported image format for OCR: {}", file.getName());
+            return "";
+        }
+
         Tesseract t = getTesseract();
-        // гарантируем актуальные параметры
         t.setLanguage(ocrProperties.getLanguages());
         t.setPageSegMode(ocrProperties.getPsm());
         t.setOcrEngineMode(ocrProperties.getOem());
-        return t.doOCR(file);
+
+        return t.doOCR(image);
     }
+
+    private BufferedImage convertToPngViaMagick(File file) {
+        try {
+            File tmpPng = File.createTempFile("ocr-", ".png");
+            ProcessBuilder pb = new ProcessBuilder("magick", "convert", file.getAbsolutePath(), tmpPng.getAbsolutePath());
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            process.waitFor(15, TimeUnit.SECONDS);
+
+            if (tmpPng.exists() && tmpPng.length() > 0) {
+                log.info("🪄 Converted {} → {}", file.getName(), tmpPng.getName());
+                return ImageIO.read(tmpPng);
+            } else {
+                log.error("❌ ImageMagick failed to convert {}", file.getName());
+            }
+        } catch (Exception ex) {
+            log.error("❌ Failed to convert via ImageMagick: {}", ex.getMessage());
+        }
+        return null;
+    }
+
+
+
 
 
     /**

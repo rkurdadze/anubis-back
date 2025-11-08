@@ -198,6 +198,32 @@
             <artifactId>imageio-core</artifactId>
             <version>3.12.0</version>
         </dependency>
+        <dependency>
+            <groupId>com.twelvemonkeys.imageio</groupId>
+            <artifactId>imageio-webp</artifactId>
+            <version>3.12.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.twelvemonkeys.imageio</groupId>
+            <artifactId>imageio-psd</artifactId>
+            <version>3.12.0</version>
+        </dependency>
+
+        <!-- 🧩 Дополнительный TIFF-декодер (JAI ImageIO Core) -->
+        <dependency>
+            <groupId>com.github.jai-imageio</groupId>
+            <artifactId>jai-imageio-core</artifactId>
+            <version>1.4.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-imaging</artifactId>
+            <version>1.0-alpha3</version>
+        </dependency>
+
+
+
 
         <!-- Tests -->
         <dependency>
