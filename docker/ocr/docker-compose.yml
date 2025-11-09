@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  ocr-gateway:
+    container_name: anubis-ocr-gateway
+    build:
+      context: ../../ocr-service
+    image: anubis/ocr-gateway:latest
+    ports:
+      - "4101:4101"
+    environment:
+      - OCR_LANGUAGES=${OCR_LANGUAGES:-kat+eng+rus}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4101/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped

@@ -54,6 +54,11 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+
         <!-- Data / JPA -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -115,52 +120,15 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- Apache Tika (SNAPSHOT для совместимости с PDFBox 3.x) -->
         <dependency>
             <groupId>org.apache.tika</groupId>
             <artifactId>tika-core</artifactId>
-            <version>3.3.0-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.tika</groupId>
-            <artifactId>tika-parsers-standard-package</artifactId>
-            <version>3.3.0-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.tika</groupId>
-            <artifactId>tika-langdetect</artifactId>
-            <version>3.3.0-SNAPSHOT</version>
-            <type>pom</type>
+            <version>2.9.2</version>
         </dependency>
         <dependency>
             <groupId>org.apache.tika</groupId>
             <artifactId>tika-langdetect-optimaize</artifactId>
-            <version>3.3.0-SNAPSHOT</version>
-        </dependency>
-
-        <!-- Commons -->
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
-            <version>3.19.0</version>
-        </dependency>
-
-        <!-- OCR via Tesseract -->
-        <dependency>
-            <groupId>net.sourceforge.tess4j</groupId>
-            <artifactId>tess4j</artifactId>
-            <version>5.11.0</version>
-            <exclusions>
-                <!-- исключаем старый PDFBox 2.x, чтобы не конфликтовал с Tika 3.x -->
-                <exclusion>
-                    <groupId>org.apache.pdfbox</groupId>
-                    <artifactId>pdfbox</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.apache.pdfbox</groupId>
-                    <artifactId>fontbox</artifactId>
-                </exclusion>
-            </exclusions>
+            <version>2.9.2</version>
         </dependency>
 
         <!-- Совместимая версия PDFBox 3.x -->
@@ -170,7 +138,6 @@
             <version>3.0.6</version>
         </dependency>
 
-        <!-- JAI ImageIO Core (TIFF, JPEG 2000, и пр.) -->
         <dependency>
             <groupId>com.github.jai-imageio</groupId>
             <artifactId>jai-imageio-core</artifactId>
@@ -181,8 +148,11 @@
             <artifactId>jai-imageio-jpeg2000</artifactId>
             <version>1.4.0</version>
         </dependency>
-
-        <!-- TwelveMonkeys ImageIO (расширенные JPEG/TIFF/и др.) -->
+        <dependency>
+            <groupId>com.twelvemonkeys.imageio</groupId>
+            <artifactId>imageio-core</artifactId>
+            <version>3.12.0</version>
+        </dependency>
         <dependency>
             <groupId>com.twelvemonkeys.imageio</groupId>
             <artifactId>imageio-jpeg</artifactId>
@@ -191,11 +161,6 @@
         <dependency>
             <groupId>com.twelvemonkeys.imageio</groupId>
             <artifactId>imageio-tiff</artifactId>
-            <version>3.12.0</version>
-        </dependency>
-        <dependency>
-            <groupId>com.twelvemonkeys.imageio</groupId>
-            <artifactId>imageio-core</artifactId>
             <version>3.12.0</version>
         </dependency>
         <dependency>
@@ -209,11 +174,10 @@
             <version>3.12.0</version>
         </dependency>
 
-        <!-- 🧩 Дополнительный TIFF-декодер (JAI ImageIO Core) -->
         <dependency>
-            <groupId>com.github.jai-imageio</groupId>
-            <artifactId>jai-imageio-core</artifactId>
-            <version>1.4.0</version>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-csv</artifactId>
+            <version>1.11.0</version>
         </dependency>
 
         <dependency>
@@ -239,28 +203,6 @@
         </dependency>
 
     </dependencies>
-
-    <!-- Apache snapshot-репозиторий для Tika 3.3.0-SNAPSHOT -->
-    <repositories>
-        <repository>
-            <id>pdfbox-snapshots</id>
-            <url>https://repository.apache.org/content/repositories/snapshots/</url>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-
-        <repository>
-            <id>apache-snapshots</id>
-            <url>https://repository.apache.org/content/repositories/snapshots/</url>
-            <releases>
-                <enabled>false</enabled>
-            </releases>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
 
     <build>
         <plugins>

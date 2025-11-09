@@ -37,21 +37,25 @@ server:
 anubis:
   ocr:
     enabled: ${ANUBIS_OCR_ENABLED:true}
-    datapath: ${TESSDATA_PREFIX:${ANUBIS_OCR_DATAPATH:}}
+    service-url: ${ANUBIS_OCR_SERVICE_URL:http://localhost:4101}
     languages: ${ANUBIS_OCR_LANGUAGES:kat+eng+rus}
-    psm: ${ANUBIS_OCR_PSM:3}
-    oem: ${ANUBIS_OCR_OEM:1}
-    fallback-enabled: ${ANUBIS_OCR_FALLBACK_ENABLED:true}
-    fallback-min-length: ${ANUBIS_OCR_FALLBACK_MIN_LENGTH:120}
-    combine-with-tika: ${ANUBIS_OCR_COMBINE_WITH_TIKA:true}
-    dpi: ${ANUBIS_OCR_DPI:300}
+
+    # Таймауты HTTP-запросов
+    connect-timeout: ${ANUBIS_OCR_CONNECT_TIMEOUT:5s}
+    read-timeout: ${ANUBIS_OCR_READ_TIMEOUT:60s}
+    request-timeout: ${ANUBIS_OCR_REQUEST_TIMEOUT:90s}
+
+    # Автозапуск контейнера OCR при старте приложения
+    auto-start-container: ${ANUBIS_OCR_AUTOSTART:true}
+    docker-compose-file: ${ANUBIS_OCR_DOCKER_COMPOSE:docker/ocr/docker-compose.yml}
+    docker-compose-service: ${ANUBIS_OCR_DOCKER_SERVICE:ocr-gateway}
+
+    # Проверка готовности OCR-шлюза
+    readiness-timeout: ${ANUBIS_OCR_READINESS_TIMEOUT:120s}
+    health-check-interval: ${ANUBIS_OCR_HEALTH_INTERVAL:2s}
 
   language-detect:
     enabled: ${ANUBIS_LANGUAGE_DETECT_ENABLED:true}
-
-  tika:
-    max-content-length: ${ANUBIS_TIKA_MAX_CONTENT_LENGTH:10485760}
-    parse-timeout-seconds: ${ANUBIS_TIKA_TIMEOUT:30}
 
   storage:
     temp-dir: ${ANUBIS_STORAGE_TMP:/tmp/anubis}
@@ -63,14 +67,6 @@ anubis:
       base-url: ${ANUBIS_GOTENBERG_URL:http://localhost:3000}
       connect-timeout: ${ANUBIS_GOTENBERG_CONNECT_TIMEOUT:5s}
       read-timeout: ${ANUBIS_GOTENBERG_READ_TIMEOUT:60s}
-
-  # ==========================
-  # 🧩 PDF / OCR / Fonts Settings
-  # ==========================
-  pdfbox:
-    fontdir: /Library/Fonts:/System/Library/Fonts
-    fontcache: /tmp/pdf-font-cache
-    use-fallback-fonts: true
 
 
 # ==========================
@@ -84,3 +80,5 @@ logging:
     org.apache.pdfbox.pdmodel.font.PDType0Font: ERROR
     org.apache.pdfbox.pdmodel.font.PDSimpleFont: ERROR
     org.apache.pdfbox.pdmodel.font: ERROR
+    reactor.netty.http.client.HttpClientConnect: ERROR  # 🔇 убираем Connection reset при старте OCR
+

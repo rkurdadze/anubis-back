@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  ocr-gateway:
+    build: ./ocr-service
+    image: anubis/ocr-gateway:latest
+    container_name: anubis-ocr-gateway
+    environment:
+      OCR_LANGUAGES: ${OCR_LANGUAGES:-kat+eng+rus}
+    ports:
+      - "4101:4101"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4101/healthz"]
+      interval: 10m
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build: .
+    image: anubis/api:latest
+    ports:
+      - "4100:4100"
+    environment:
+      ANUBIS_DB_URL: ${ANUBIS_DB_URL:-jdbc:postgresql://db:5432/anubis}
+      ANUBIS_DB_USER: ${ANUBIS_DB_USER:-anubis}
+      ANUBIS_DB_PASSWORD: ${ANUBIS_DB_PASSWORD:-anubis}
+      ANUBIS_OCR_SERVICE_URL: http://ocr-gateway:4101
+      ANUBIS_OCR_AUTOSTART: "false"
+      ANUBIS_OCR_LANGUAGES: ${ANUBIS_OCR_LANGUAGES:-kat+eng+rus}
+      ANUBIS_GOTENBERG_URL: ${ANUBIS_GOTENBERG_URL:-http://gotenberg:3000}
+    depends_on:
+      - ocr-gateway
+    restart: unless-stopped
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    environment:
+      LIBREOFFICE_ENABLE: "true"
+      CHROMIUM_DISABLE_GPU: "true"
+      PDF_ENGINES_ENABLE: "true"
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
