@@ -4,7 +4,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 # ------------------------------------------------------
-# 🧩 Установка системных зависимостей и окружения
+# 🧩 Системные зависимости
 # ------------------------------------------------------
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -21,7 +21,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # ------------------------------------------------------
-# 📦 Установка моделей tessdata_best и tessdata_fast
+# 📦 Установка tessdata_best и tessdata_fast
 # ------------------------------------------------------
 RUN mkdir -p /usr/share/tesseract-ocr/5/tessdata && \
     cd /usr/share/tesseract-ocr/5/tessdata && \
@@ -45,18 +45,17 @@ RUN mkdir -p /opt/tika && \
     ln -sf /opt/tika/tika-server-standard-${TIKA_VERSION}.jar /opt/tika/tika-server.jar
 
 # ------------------------------------------------------
-# 🐍 Установка Python-зависимостей (включая tika)
+# 🐍 Установка Python-зависимостей
 # ------------------------------------------------------
 WORKDIR /opt/ocr
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir tika
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py ./main.py
 
 # ------------------------------------------------------
-# ⚙️ Прогрев Apache Tika (предварительная инициализация)
+# ⚙️ Прогрев Apache Tika
 # ------------------------------------------------------
 RUN echo "🔥 Warming up Apache Tika server..." && \
     java -version && \
@@ -79,7 +78,7 @@ ENV TIKA_SERVER_JAR=/opt/tika/tika-server.jar \
 EXPOSE 4101
 
 # ------------------------------------------------------
-# 🧠 Запуск Apache Tika + FastAPI (Uvicorn)
+# 🧠 Запуск Tika + FastAPI
 # ------------------------------------------------------
 CMD java -jar /opt/tika/tika-server.jar > /tmp/tika.log 2>&1 & \
     echo "Waiting for Apache Tika to start..." && sleep 3 && \
