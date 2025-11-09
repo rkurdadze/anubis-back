@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +20,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/files")
 @RequiredArgsConstructor
@@ -123,20 +125,27 @@ public class FileController {
         try {
             DocumentPreviewService.PreviewDocument preview = documentPreviewService.renderPreview(fileId);
             ByteArrayResource resource = preview.asResource();
+
             ContentDisposition contentDisposition = ContentDisposition.inline()
                     .filename(preview.filename(), StandardCharsets.UTF_8)
                     .build();
 
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentDisposition(contentDisposition);
+            headers.setContentType(preview.mediaType()); // Critical: uses correct MIME
+            headers.setContentLength(preview.content().length);
+
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
-                    .contentType(MediaType.APPLICATION_PDF)
-                    .contentLength(preview.content().length)
+                    .headers(headers)
                     .body(resource);
+
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         } catch (IllegalStateException e) {
+            log.warn("Preview service unavailable: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
         } catch (IOException e) {
+            log.error("IO error during preview generation", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

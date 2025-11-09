@@ -10,13 +10,12 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.*;
 import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -37,6 +36,7 @@ import java.util.Locale;
 
 /**
  * Сервис формирования PDF-превью с помощью Gotenberg.
+ * При ошибке Gotenberg — возвращает no_preview.jpg из assets.
  */
 @Service
 @RequiredArgsConstructor
@@ -50,7 +50,7 @@ public class DocumentPreviewService {
     private final DocumentPreviewProperties properties;
 
     /**
-     * Возвращает PDF-превью для файла.
+     * Возвращает превью: PDF или fallback-изображение (no_preview.jpg)
      */
     public PreviewDocument renderPreview(Long fileId) throws IOException {
         FileDownload download = fileService.loadFile(fileId);
@@ -62,33 +62,31 @@ public class DocumentPreviewService {
             throw new IllegalStateException("Document preview service disabled");
         }
 
+        // 1. PDF — пропускаем как есть
         if (isPdf(mimeType, filename)) {
             return new PreviewDocument(appendPdfExtension(filename), download.getContent());
         }
 
-        if ((mimeType != null && mimeType.contains("image")) ||
-                filename.endsWith(".psd") || filename.endsWith(".tif") ||
-                filename.endsWith(".tiff") || filename.endsWith(".png") ||
-                filename.endsWith(".jpg") || filename.endsWith(".jpeg")) {
-
+        // 2. Изображения (включая PSD, TIFF) — локальная конвертация
+        if (isImageFile(mimeType, filename)) {
             try {
-                log.debug("🖼️ Local image→PDF conversion for {}", filename);
+                log.debug("Local image to PDF conversion for {}", filename);
                 byte[] pdfBytes = convertPsdToPdf(download.getContent(), filename);
                 return new PreviewDocument(appendPdfExtension(filename), pdfBytes);
             } catch (IOException e) {
-                log.warn("⚠️ Local PSD conversion failed ({}), fallback to Gotenberg", e.getMessage());
-                byte[] pdfContent = convertToPdf(download);
-                return new PreviewDocument(appendPdfExtension(filename), pdfContent);
+                log.warn("Local image conversion failed ({}), fallback to Gotenberg", e.getMessage());
+                return convertToPdfWithFallback(download);
             }
-
         }
 
-
-        byte[] pdfContent = convertToPdf(download);
-        return new PreviewDocument(appendPdfExtension(filename), pdfContent);
+        // 3. Остальные — через Gotenberg с fallback
+        return convertToPdfWithFallback(download);
     }
 
-    private byte[] convertToPdf(FileDownload download) {
+    /**
+     * Пытается конвертировать через Gotenberg, при ошибке — возвращает no_preview.jpg
+     */
+    private PreviewDocument convertToPdfWithFallback(FileDownload download) {
         String endpoint = resolveEndpoint(download.getFile().getMimeType(), download.getFile().getFileName());
         String url = buildUrl(endpoint);
 
@@ -125,15 +123,38 @@ public class DocumentPreviewService {
             );
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                return response.getBody();
+                String pdfFilename = appendPdfExtension(filename);
+                return new PreviewDocument(pdfFilename, response.getBody());
             }
 
-            log.error("Gotenberg conversion failed with status {}", response.getStatusCode());
-            throw new IllegalStateException("Failed to convert document to PDF. Status: " + response.getStatusCode());
+            log.warn("Gotenberg conversion failed with status {}, using no_preview.jpg", response.getStatusCode());
 
         } catch (RestClientException ex) {
-            log.error("Error calling Gotenberg: {}", ex.getMessage(), ex);
-            throw new IllegalStateException("Unable to contact Gotenberg service", ex);
+            log.warn("Gotenberg unreachable: {}, using no_preview.jpg", ex.getMessage());
+        } catch (Exception ex) {
+            log.error("Unexpected error during Gotenberg call: {}", ex.getMessage(), ex);
+        }
+
+        // === FALLBACK: no_preview.jpg ===
+        return loadFallbackPreview();
+    }
+
+    /**
+     * Загружает no_preview.jpg из classpath: src/main/resources/assets/no_preview.jpg
+     */
+    private PreviewDocument loadFallbackPreview() {
+        try {
+            Resource resource = new ClassPathResource("assets/no_preview.jpg");
+            if (!resource.exists()) {
+                log.error("Fallback image 'assets/no_preview.jpg' not found in classpath");
+                throw new IllegalStateException("Fallback preview image missing");
+            }
+            byte[] bytes = resource.getInputStream().readAllBytes();
+            log.info("Using fallback preview: no_preview.jpg");
+            return new PreviewDocument("no_preview.jpg", bytes);
+        } catch (IOException e) {
+            log.error("Failed to load fallback image 'no_preview.jpg'", e);
+            throw new IllegalStateException("Preview unavailable and fallback image missing", e);
         }
     }
 
@@ -144,7 +165,6 @@ public class DocumentPreviewService {
         if (safeMime.contains("html") || safeName.endsWith(".html") || safeName.endsWith(".htm")) {
             return "/forms/chromium/convert/html";
         }
-
         return "/forms/libreoffice/convert";
     }
 
@@ -167,6 +187,17 @@ public class DocumentPreviewService {
         return filename.toLowerCase(Locale.ROOT).endsWith(".pdf");
     }
 
+    private boolean isImageFile(String mimeType, String filename) {
+        if (mimeType != null && mimeType.toLowerCase(Locale.ROOT).contains("image")) {
+            return true;
+        }
+        if (filename == null) return false;
+        String lower = filename.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".psd") || lower.endsWith(".tif") || lower.endsWith(".tiff") ||
+                lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") ||
+                lower.endsWith(".gif") || lower.endsWith(".bmp") || lower.endsWith(".webp");
+    }
+
     private String appendPdfExtension(String filename) {
         String baseName = filename == null || filename.isBlank() ? DEFAULT_FILENAME : filename;
         if (baseName.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
@@ -179,10 +210,24 @@ public class DocumentPreviewService {
         return baseName + ".pdf";
     }
 
+    /**
+     * Enhanced PreviewDocument with automatic MIME type detection
+     */
+    public record PreviewDocument(String filename, byte[] content, MediaType mediaType) {
+        public PreviewDocument(String filename, byte[] content) {
+            this(filename, content,
+                    filename.toLowerCase().endsWith(".pdf")
+                            ? MediaType.APPLICATION_PDF
+                            : MediaType.IMAGE_JPEG);
+        }
 
-    public record PreviewDocument(String filename, byte[] content) {
         public ByteArrayResource asResource() {
-            return new ByteArrayResource(content);
+            return new ByteArrayResource(content) {
+                @Override
+                public String getFilename() {
+                    return filename;
+                }
+            };
         }
     }
 
@@ -200,15 +245,9 @@ public class DocumentPreviewService {
         }
     }
 
-    /**
-     * Проверяет, является ли изображение практически полностью чёрным.
-     * Используется для выявления PSD без merged preview.
-     */
     private boolean isBlackImage(BufferedImage image) {
         int w = image.getWidth();
         int h = image.getHeight();
-
-        // Чтобы не было слишком медленно — берём не все пиксели, а сетку 20x20
         int stepX = Math.max(1, w / 20);
         int stepY = Math.max(1, h / 20);
 
@@ -222,20 +261,15 @@ public class DocumentPreviewService {
                 int g = (rgb >> 8) & 0xFF;
                 int b = rgb & 0xFF;
                 total++;
-                // считаем пиксель "чёрным", если он очень тёмный
                 if (r < 10 && g < 10 && b < 10) {
                     black++;
                 }
             }
         }
 
-        // если >95% пикселей тёмные — считаем изображение чёрным
         return total > 0 && (black * 100 / total) > 95;
     }
 
-    /**
-     * Второй способ чтения PSD через ImageIO (если Apache Imaging не справился).
-     */
     private BufferedImage readPsdWithImageIO(byte[] bytes) throws IOException {
         try (ImageInputStream input = ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(bytes))) {
             Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
@@ -250,63 +284,49 @@ public class DocumentPreviewService {
         }
     }
 
-
-
-    /**
-     * Локальная конвертация PSD → PDF с использованием ImageIO и PDFBox.
-     */
     private byte[] convertPsdToPdf(byte[] psdBytes, String filename) throws IOException {
-        BufferedImage image;
-
-        try {
-            image = Imaging.getBufferedImage(psdBytes);
-            log.debug("✅ Loaded PSD via Apache Commons Imaging: {}", filename);
-        } catch (Exception e) {
-            throw new IOException("Failed to read PSD using Commons Imaging: " + e.getMessage(), e);
+        BufferedImage image = readPsdWithImageIO(psdBytes);
+        if (image == null) {
+            throw new IOException("Failed to read PSD: no merged preview layer");
         }
 
-
-        if (image == null || isBlackImage(image)) {
-            log.warn("⚠️ PSD preview missing or black: {} → fallback to ImageIO", filename);
-            try {
-                image = readPsdWithImageIO(psdBytes);
-                if (image == null) {
-                    throw new IOException("ImageIO could not read PSD");
-                }
-            } catch (Exception ex) {
-                log.warn("❌ ImageIO fallback failed: {}", ex.getMessage());
-                throw new IOException("PSD has no merged preview layer");
-            }
-        }
-
-
-
-        // flatten transparency with proper alpha handling
-        BufferedImage flattened = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = flattened.createGraphics();
-        g.setComposite(AlphaComposite.SrcOver);
-        g.setColor(Color.WHITE);
-        g.fillRect(0, 0, image.getWidth(), image.getHeight());
-        g.drawImage(image, 0, 0, null);
-        g.dispose();
-        image = flattened;
+        // Ensure ARGB
+        BufferedImage argbImage = toArgb(image);
 
         try (PDDocument doc = new PDDocument()) {
-            PDPage page = new PDPage(new PDRectangle(image.getWidth(), image.getHeight()));
+            PDPage page = new PDPage(new PDRectangle(argbImage.getWidth(), argbImage.getHeight()));
             doc.addPage(page);
 
-            try (PDPageContentStream content = new PDPageContentStream(doc, page)) {
-                var pdImage = LosslessFactory.createFromImage(doc, image);
-                content.drawImage(pdImage, 0, 0, image.getWidth(), image.getHeight());
+            // Encode as PNG to preserve alpha
+            ByteArrayOutputStream pngOut = new ByteArrayOutputStream();
+            if (!ImageIO.write(argbImage, "png", pngOut)) {
+                throw new IOException("Failed to encode image as PNG");
             }
 
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            doc.save(out);
-            return out.toByteArray();
+            PDImageXObject pdImage = PDImageXObject.createFromByteArray(
+                    doc, pngOut.toByteArray(), filename
+            );
+
+            try (PDPageContentStream content = new PDPageContentStream(doc, page)) {
+                content.drawImage(pdImage, 0, 0, argbImage.getWidth(), argbImage.getHeight());
+            }
+
+            ByteArrayOutputStream pdfOut = new ByteArrayOutputStream();
+            doc.save(pdfOut);
+            return pdfOut.toByteArray();
         }
     }
 
 
-
+    private BufferedImage toArgb(BufferedImage src) {
+        if (src.getType() == BufferedImage.TYPE_INT_ARGB) {
+            return src;
+        }
+        BufferedImage argb = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = argb.createGraphics();
+        g.setComposite(AlphaComposite.Src);
+        g.drawImage(src, 0, 0, null);
+        g.dispose();
+        return argb;
+    }
 }
-
