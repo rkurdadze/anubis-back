@@ -1,12 +1,14 @@
 package ge.comcom.anubis.service.core;
 
 import ge.comcom.anubis.config.LanguageDetectProperties;
+import ge.comcom.anubis.dto.ws.FileStatusMessage;
 import ge.comcom.anubis.entity.core.ObjectFileEntity;
 import ge.comcom.anubis.entity.core.SearchTextCache;
 import ge.comcom.anubis.integration.ocr.RemoteOcrClient;
 import ge.comcom.anubis.integration.ocr.RemoteOcrResponse;
 import ge.comcom.anubis.repository.core.ObjectFileRepository;
 import ge.comcom.anubis.repository.core.SearchTextCacheRepository;
+import ge.comcom.anubis.service.SocketNotifierService;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -39,6 +41,7 @@ public class FullTextSearchService {
     private final SearchTextCacheRepository cacheRepository;
     private final RemoteOcrClient remoteOcrClient;
     private final LanguageDetectProperties languageDetectProperties;
+    private final SocketNotifierService socketNotifierService;
 
     private LanguageDetector languageDetector;
 
@@ -114,8 +117,15 @@ public class FullTextSearchService {
             cacheRepository.save(cache);
             log.info("Indexed version_id={} [combined={} chars, tika={}, ocr={}]", versionId,
                     combined.length(), meaningfulLength(tikaText), meaningfulLength(ocrText));
+            notifyFileIndexed(fileEntity.getId(), versionId, true, null);
         } catch (Exception e) {
-            log.error("Failed to extract text for file {}: {}", fileEntity.getId(), e.getMessage(), e);
+            String errorMessage = String.format(
+                    "Failed to extract text for file %d: %s",
+                    fileEntity.getId(),
+                    e.getMessage()
+            );
+            log.error(errorMessage, e);
+            notifyFileIndexed(fileEntity.getId(), versionId, false, errorMessage);
         } finally {
             if (fileEntity.isInline() && localFile != null) {
                 try {
@@ -124,6 +134,13 @@ public class FullTextSearchService {
                 }
             }
         }
+    }
+
+    private void notifyFileIndexed(Long fileId, Long versionId, boolean success, String errorMsg) {
+        String status = success ? "INDEXED" : "FAILED";
+        FileStatusMessage payload = new FileStatusMessage(fileId, versionId, status, errorMsg);
+//        socketNotifierService.toFileVersion(versionId, "FILE_STATUS", payload);
+        socketNotifierService.toAllFiles("FILE_STATUS", payload);
     }
 
     private File getLocalFile(ObjectFileEntity fileEntity) {

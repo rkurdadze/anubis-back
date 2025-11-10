@@ -1,4 +1,4 @@
-package ge.comcom.anubis.dto;
+package ge.comcom.anubis.dto.ws;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

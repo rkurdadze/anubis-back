@@ -1,6 +1,6 @@
 package ge.comcom.anubis.service;
 
-import ge.comcom.anubis.dto.WsEnvelope;
+import ge.comcom.anubis.dto.ws.WsEnvelope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -28,9 +28,9 @@ public class SocketNotifierService {
         );
         try {
             messagingTemplate.convertAndSend(topic, envelope);
-            log.debug("[WS] Sent to {} type={} payload={}", topic, type, payload);
+            log.info("[WS] Sent to {} type={} payload={}", topic, type, payload);
         } catch (Exception e) {
-            log.warn("[WS] Failed to send to {}: {}", topic, e.getMessage());
+            log.error("[WS] Failed to send to {}: {}", topic, e.getMessage());
         }
     }
 
@@ -39,6 +39,14 @@ public class SocketNotifierService {
      */
     public <T> void toFileVersion(Long versionId, String type, T payload) {
         send("/topic/files/" + versionId, type, payload);
+    }
+
+    /**
+     * 🔹 Отправить сообщение всем подписчикам — глобально
+     * Используй этот метод, если Angular подписан на /topic/files/all
+     */
+    public <T> void toAllFiles(String type, T payload) {
+        send("/topic/files/all", type, payload);
     }
 }
 
