@@ -1,7 +1,7 @@
 package ge.comcom.anubis.service.view;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import ge.comcom.anubis.dto.ObjectDto;
 import ge.comcom.anubis.dto.ObjectViewDto;
 import ge.comcom.anubis.dto.ViewGroupingDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
@@ -10,6 +10,7 @@ import ge.comcom.anubis.entity.meta.PropertyDef;
 import ge.comcom.anubis.entity.security.User;
 import ge.comcom.anubis.entity.view.ObjectViewEntity;
 import ge.comcom.anubis.entity.view.ObjectViewGroupingEntity;
+import ge.comcom.anubis.mapper.ObjectMapper;
 import ge.comcom.anubis.mapper.view.ObjectViewMapper;
 import ge.comcom.anubis.repository.core.ObjectLinkRepository;
 import ge.comcom.anubis.repository.core.ObjectRepository;
@@ -39,6 +40,7 @@ public class ObjectViewService {
     private final ObjectLinkRepository linkRepository;
     private final ObjectMapper objectMapper;
     private final ObjectViewMapper objectViewMapper;
+    private final com.fasterxml.jackson.databind.ObjectMapper om;
 
     public ObjectViewDto create(ObjectViewDto dto) {
         User creator = userRepository.findById(dto.getCreatedById())
@@ -115,7 +117,7 @@ public class ObjectViewService {
     }
 
 
-    public List<ObjectEntity> executeView(Long viewId) {
+    public List<ObjectDto> executeView(Long viewId) {
         log.info("▶️ Executing view id={}", viewId);
 
         try {
@@ -136,6 +138,7 @@ public class ObjectViewService {
             }
 
             List<ObjectEntity> results = objectRepository.findAll();
+
             log.debug("Initial object count: {}", results.size());
 
             // -------------------------------------------------------
@@ -228,7 +231,10 @@ public class ObjectViewService {
             }
 
             log.info("✅ Executed view '{}' (id={}) -> {} result(s)", view.getName(), view.getId(), results.size());
-            return results;
+            List<ObjectDto> dtoResults = (results == null || results.isEmpty())
+                    ? List.of()
+                    : results.stream().map(objectMapper::toDto).toList();
+            return dtoResults;
 
         } catch (Exception e) {
             log.error("🔥 Unhandled error executing view id={} → {}", viewId, e.getMessage(), e);
@@ -259,11 +265,11 @@ public class ObjectViewService {
 
         try {
             if (filterJson.isArray()) {
-                List<Map<String, Object>> list = objectMapper.convertValue(filterJson, List.class);
+                List<Map<String, Object>> list = om.convertValue(filterJson, List.class);
                 log.debug("parseFilterJson(): parsed array of {} filters", list.size());
                 return list;
             } else if (filterJson.isObject()) {
-                Map<String, Object> single = objectMapper.convertValue(filterJson, Map.class);
+                Map<String, Object> single = om.convertValue(filterJson, Map.class);
                 log.debug("parseFilterJson(): single object -> {}", single);
                 return List.of(single);
             } else {
@@ -293,11 +299,11 @@ public class ObjectViewService {
                             .replace("\\\\", "\\");
                 }
 
-                return objectMapper.readTree(trimmed);
+                return om.readTree(trimmed);
             }
 
             // fallback — valueToTree
-            return objectMapper.valueToTree(raw);
+            return om.valueToTree(raw);
 
         } catch (Exception e) {
             log.error("❌ JSON parse failed: {}", e.getMessage(), e);

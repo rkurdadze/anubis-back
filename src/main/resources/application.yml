@@ -81,4 +81,5 @@ logging:
     org.apache.pdfbox.pdmodel.font.PDSimpleFont: ERROR
     org.apache.pdfbox.pdmodel.font: ERROR
     reactor.netty.http.client.HttpClientConnect: ERROR  # 🔇 убираем Connection reset при старте OCR
+    io.netty.resolver.dns.DnsServerAddressStreamProviders: OFF
 

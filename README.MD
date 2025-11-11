@@ -53,6 +53,21 @@
    ```bash
      curl -f http://localhost:4101/healthz
    ```
+
+
+
+
+#
+#
+#
+#
+#
+#
+#
+
+
+
+
 5. Запускайте `AnubisApplication` из IDE или командой:
    ```bash
    ./mvnw spring-boot:run

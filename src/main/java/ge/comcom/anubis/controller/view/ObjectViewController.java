@@ -1,5 +1,6 @@
 package ge.comcom.anubis.controller.view;
 
+import ge.comcom.anubis.dto.ObjectDto;
 import ge.comcom.anubis.dto.ObjectViewDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
 import ge.comcom.anubis.service.view.ObjectViewService;
@@ -101,7 +102,7 @@ public class ObjectViewController {
             @ApiResponse(responseCode = "200", description = "View executed successfully."),
             @ApiResponse(responseCode = "404", description = "View not found or no matching objects.")
     })
-    public ResponseEntity<List<ObjectEntity>> executeView(
+    public ResponseEntity<List<ObjectDto>> executeView(
             @Parameter(description = "View ID", example = "101") @PathVariable Long id) {
         return ResponseEntity.ok(service.executeView(id));
     }
