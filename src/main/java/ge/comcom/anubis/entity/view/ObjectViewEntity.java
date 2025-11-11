@@ -1,17 +1,18 @@
 package ge.comcom.anubis.entity.view;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.vladmihalcea.hibernate.type.json.JsonBinaryType;
 import ge.comcom.anubis.entity.security.User;
+import ge.comcom.anubis.entity.view.ObjectViewGroupingEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Comment;
+import org.hibernate.annotations.Type;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Represents a saved search / virtual folder (like M-Files View).
- */
 @Entity
 @Table(name = "object_view")
 @Getter
@@ -28,32 +29,27 @@ public class ObjectViewEntity {
     private Long id;
 
     @Column(name = "name", nullable = false)
-    @Comment("View name. Example: 'My Active Documents'.")
     private String name;
 
     @Column(name = "is_common", nullable = false)
-    @Comment("TRUE = shared (common), FALSE = private.")
     private Boolean isCommon = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
-    @Comment("Creator user id reference.")
     private User createdBy;
 
+    @Type(JsonBinaryType.class) // ✅ правильный способ для Hibernate 6
     @Column(name = "filter_json", columnDefinition = "jsonb")
     @Comment("Stored JSON filter definition.")
-    private String filterJson;
+    private JsonNode filterJson;
 
     @Column(name = "sort_order")
-    @Comment("Ordering index.")
     private Integer sortOrder;
 
     @OneToMany(mappedBy = "view", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @Comment("Grouping definitions for this view.")
     private List<ObjectViewGroupingEntity> groupings = new ArrayList<>();
 
     @Column(name = "created_at", updatable = false)
-    @Comment("Creation timestamp.")
     private Instant createdAt;
 
     @PrePersist

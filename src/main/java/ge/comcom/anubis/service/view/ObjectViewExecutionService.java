@@ -1,6 +1,7 @@
 package ge.comcom.anubis.service.view;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import ge.comcom.anubis.dto.ObjectViewFilter;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
@@ -155,12 +156,16 @@ public class ObjectViewExecutionService {
     }
 
 
-    private List<ObjectViewFilter> parseFilters(String json) {
+    private List<ObjectViewFilter> parseFilters(JsonNode jsonNode) {
         try {
-            return objectMapper.readValue(json, new TypeReference<>() {});
+            if (jsonNode == null || jsonNode.isNull() || jsonNode.isEmpty()) {
+                return Collections.emptyList();
+            }
+            return objectMapper.convertValue(jsonNode, new TypeReference<>() {});
         } catch (Exception e) {
             log.error("Invalid filter_json for view: {}", e.getMessage());
             return Collections.emptyList();
         }
     }
+
 }
