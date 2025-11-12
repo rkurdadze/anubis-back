@@ -119,7 +119,6 @@ public class ObjectViewService {
 
     public List<ObjectDto> executeView(Long viewId) {
         log.info("▶️ Executing view id={}", viewId);
-
         try {
             ObjectViewEntity view = viewRepository.findById(viewId)
                     .orElseThrow(() -> new EntityNotFoundException("View not found: " + viewId));
@@ -130,116 +129,126 @@ public class ObjectViewService {
                 throw new IllegalStateException("View has no defined filters (filter_json is missing).");
             }
 
-            List<Map<String, Object>> filters = parseFilterJson(view.getFilterJson());
-            log.debug("✅ Parsed filters ({}): {}", filters.size(), filters);
+            List<ObjectEntity> allObjects = objectRepository.findAll();
+            log.debug("Initial object count: {}", allObjects.size());
 
-            if (filters.isEmpty()) {
-                throw new IllegalStateException("Invalid or empty filter_json. Please define valid filters before execution.");
-            }
-
-            List<ObjectEntity> results = objectRepository.findAll();
-
-            log.debug("Initial object count: {}", results.size());
-
-            // -------------------------------------------------------
-            // PROPERTY FILTERS
-            // -------------------------------------------------------
-            for (Map<String, Object> f : filters) {
-                try {
-                    if (f.containsKey("propertyDefId") && f.containsKey("value")) {
-                        log.debug("Processing property filter: {}", f);
-
-                        Object defRaw = f.get("propertyDefId");
-                        Object valRaw = f.get("value");
-                        String op = String.valueOf(f.getOrDefault("op", "EQ"));
-
-                        Long defId = Long.valueOf(String.valueOf(defRaw));
-                        String value = String.valueOf(valRaw);
-
-                        log.debug("🧩 Applying property filter: defId={}, op={}, value={}", defId, op, value);
-
-                        results = results.stream()
-                                .filter(obj -> obj.getVersions() != null && obj.getVersions().stream()
-                                        .flatMap(v -> Optional.ofNullable(v.getPropertyValues()).stream().flatMap(Collection::stream))
-                                        .anyMatch(pv -> {
-                                            if (!pv.getPropertyDef().getId().equals(defId)) return false;
-                                            String propValue = String.valueOf(pv.getValueText());
-                                            return switch (op.toUpperCase()) {
-                                                case "EQ", "=" -> Objects.equals(propValue, value);
-                                                case "NEQ", "!=" -> !Objects.equals(propValue, value);
-                                                case "LIKE" -> propValue != null && propValue.contains(value);
-                                                case "GT" -> compareNumeric(propValue, value) > 0;
-                                                case "LT" -> compareNumeric(propValue, value) < 0;
-                                                case "GE" -> compareNumeric(propValue, value) >= 0;
-                                                case "LE" -> compareNumeric(propValue, value) <= 0;
-                                                case "ISNULL" -> propValue == null || propValue.isBlank();
-                                                default -> false;
-                                            };
-                                        }))
-                                .toList();
-
-                        log.debug("Remaining after property filter: {}", results.size());
-                    }
-                } catch (Exception e) {
-                    log.error("❌ Property filter failed: {} → {}", f, e.getMessage(), e);
-                }
-            }
-
-            // -------------------------------------------------------
-            // LINK FILTERS
-            // -------------------------------------------------------
-            for (Map<String, Object> f : filters) {
-                try {
-                    if (f.containsKey("link_role") && f.containsKey("linked_object_id")) {
-                        String role = String.valueOf(f.get("link_role"));
-                        Long linkedId = Long.valueOf(String.valueOf(f.get("linked_object_id")));
-                        log.debug("➡️ Applying link filter: role='{}', linked_object_id={}", role, linkedId);
-
-                        List<ObjectLinkEntity> links = linkRepository.findByTarget_IdAndRole_NameIgnoreCase(linkedId, role);
-                        log.debug("Found {} links for role={}", links.size(), role);
-
-                        Set<Long> allowedIds = links.stream()
-                                .map(l -> l.getSource().getId())
-                                .collect(java.util.stream.Collectors.toSet());
-
-                        results = results.stream()
-                                .filter(obj -> allowedIds.contains(obj.getId()))
-                                .toList();
-                        log.debug("Remaining after direct link filter: {}", results.size());
-                    }
-
-                    if (f.containsKey("reverse_link_role") && f.containsKey("reverse_linked_object_id")) {
-                        String role = String.valueOf(f.get("reverse_link_role"));
-                        Long linkedId = Long.valueOf(String.valueOf(f.get("reverse_linked_object_id")));
-                        log.debug("↩️ Applying reverse link filter: role='{}', linked_object_id={}", role, linkedId);
-
-                        List<ObjectLinkEntity> reverseLinks = linkRepository.findBySource_IdAndRole_NameIgnoreCase(linkedId, role);
-                        log.debug("Found {} reverse links for role={}", reverseLinks.size(), role);
-
-                        Set<Long> allowedIds = reverseLinks.stream()
-                                .map(l -> l.getTarget().getId())
-                                .collect(java.util.stream.Collectors.toSet());
-
-                        results = results.stream()
-                                .filter(obj -> allowedIds.contains(obj.getId()))
-                                .toList();
-                        log.debug("Remaining after reverse link filter: {}", results.size());
-                    }
-                } catch (Exception e) {
-                    log.error("❌ Link filter failed: {} → {}", f, e.getMessage(), e);
-                }
-            }
-
-            log.info("✅ Executed view '{}' (id={}) -> {} result(s)", view.getName(), view.getId(), results.size());
-            List<ObjectDto> dtoResults = (results == null || results.isEmpty())
+            List<ObjectEntity> filtered = applyCompoundFilter(view.getFilterJson(), allObjects);
+            log.info("✅ Executed view '{}' (id={}) -> {} result(s)", view.getName(), view.getId(), filtered.size());
+            List<ObjectDto> dtoResults = (filtered == null || filtered.isEmpty())
                     ? List.of()
-                    : results.stream().map(objectMapper::toDto).toList();
+                    : filtered.stream().map(objectMapper::toDto).toList();
             return dtoResults;
-
         } catch (Exception e) {
             log.error("🔥 Unhandled error executing view id={} → {}", viewId, e.getMessage(), e);
             throw e;
         }
+    }
+
+    /**
+     * Рекурсивно применяет compound-фильтры (AND/OR) к списку объектов.
+     */
+    private List<ObjectEntity> applyCompoundFilter(JsonNode node, List<ObjectEntity> input) {
+        if (node == null || node.isNull()) return input;
+        // Если это массив условий — применяем каждое как AND
+        if (node.isArray()) {
+            List<ObjectEntity> current = input;
+            for (JsonNode sub : node) {
+                current = applyCompoundFilter(sub, current);
+            }
+            return current;
+        }
+        // Если это объект с conditions (compound)
+        if (node.isObject() && node.has("conditions")) {
+            String operator = node.has("operator") ? node.get("operator").asText("AND") : "AND";
+            List<JsonNode> subConditions = new ArrayList<>();
+            node.get("conditions").forEach(subConditions::add);
+            if ("AND".equalsIgnoreCase(operator)) {
+                List<ObjectEntity> current = input;
+                for (JsonNode sub : subConditions) {
+                    current = applyCompoundFilter(sub, current);
+                }
+                return current;
+            } else if ("OR".equalsIgnoreCase(operator)) {
+                Set<ObjectEntity> resultSet = new LinkedHashSet<>();
+                for (JsonNode sub : subConditions) {
+                    List<ObjectEntity> subResult = applyCompoundFilter(sub, input);
+                    resultSet.addAll(subResult);
+                }
+                return new ArrayList<>(resultSet);
+            } else {
+                log.warn("Unknown compound operator: {}", operator);
+                return input;
+            }
+        }
+        // Если это простое условие
+        if (node.isObject()) {
+            // Property filter
+            if (node.has("propertyDefId") && node.has("value")) {
+                try {
+                    Long defId = node.get("propertyDefId").asLong();
+                    String op = node.has("op") ? node.get("op").asText("EQ") : "EQ";
+                    String value = node.get("value").asText();
+                    return input.stream()
+                            .filter(obj -> obj.getVersions() != null && obj.getVersions().stream()
+                                    .flatMap(v -> Optional.ofNullable(v.getPropertyValues()).stream().flatMap(Collection::stream))
+                                    .anyMatch(pv -> {
+                                        if (!pv.getPropertyDef().getId().equals(defId)) return false;
+                                        String propValue = String.valueOf(pv.getValueText());
+                                        return switch (op.toUpperCase()) {
+                                            case "EQ", "=" -> Objects.equals(propValue, value);
+                                            case "NEQ", "!=" -> !Objects.equals(propValue, value);
+                                            case "LIKE" -> propValue != null && propValue.contains(value);
+                                            case "GT" -> compareNumeric(propValue, value) > 0;
+                                            case "LT" -> compareNumeric(propValue, value) < 0;
+                                            case "GE" -> compareNumeric(propValue, value) >= 0;
+                                            case "LE" -> compareNumeric(propValue, value) <= 0;
+                                            case "ISNULL" -> propValue == null || propValue.isBlank();
+                                            default -> false;
+                                        };
+                                    }))
+                            .toList();
+                } catch (Exception e) {
+                    log.error("❌ Property filter failed: {} → {}", node, e.getMessage(), e);
+                    return input;
+                }
+            }
+            // Link filter
+            if (node.has("link_role") && node.has("linked_object_id")) {
+                try {
+                    String role = node.get("link_role").asText();
+                    Long linkedId = node.get("linked_object_id").asLong();
+                    List<ObjectLinkEntity> links = linkRepository.findByTarget_IdAndRole_NameIgnoreCase(linkedId, role);
+                    Set<Long> allowedIds = links.stream()
+                            .map(l -> l.getSource().getId())
+                            .collect(java.util.stream.Collectors.toSet());
+                    return input.stream()
+                            .filter(obj -> allowedIds.contains(obj.getId()))
+                            .toList();
+                } catch (Exception e) {
+                    log.error("❌ Link filter failed: {} → {}", node, e.getMessage(), e);
+                    return input;
+                }
+            }
+            // Reverse link filter
+            if (node.has("reverse_link_role") && node.has("reverse_linked_object_id")) {
+                try {
+                    String role = node.get("reverse_link_role").asText();
+                    Long linkedId = node.get("reverse_linked_object_id").asLong();
+                    List<ObjectLinkEntity> reverseLinks = linkRepository.findBySource_IdAndRole_NameIgnoreCase(linkedId, role);
+                    Set<Long> allowedIds = reverseLinks.stream()
+                            .map(l -> l.getTarget().getId())
+                            .collect(java.util.stream.Collectors.toSet());
+                    return input.stream()
+                            .filter(obj -> allowedIds.contains(obj.getId()))
+                            .toList();
+                } catch (Exception e) {
+                    log.error("❌ Reverse link filter failed: {} → {}", node, e.getMessage(), e);
+                    return input;
+                }
+            }
+        }
+        // Если ничего не подошло — возвращаем без изменений
+        return input;
     }
 
 
@@ -255,32 +264,7 @@ public class ObjectViewService {
             return 0;
         }
     }
-
-
-    private List<Map<String, Object>> parseFilterJson(JsonNode filterJson) {
-        if (filterJson == null || filterJson.isNull()) {
-            log.warn("parseFilterJson(): filterJson is null");
-            return List.of();
-        }
-
-        try {
-            if (filterJson.isArray()) {
-                List<Map<String, Object>> list = om.convertValue(filterJson, List.class);
-                log.debug("parseFilterJson(): parsed array of {} filters", list.size());
-                return list;
-            } else if (filterJson.isObject()) {
-                Map<String, Object> single = om.convertValue(filterJson, Map.class);
-                log.debug("parseFilterJson(): single object -> {}", single);
-                return List.of(single);
-            } else {
-                log.warn("parseFilterJson(): unexpected JSON type: {}", filterJson.getNodeType());
-                return List.of();
-            }
-        } catch (Exception e) {
-            log.error("❌ Failed to parse filter_json: {}", e.getMessage(), e);
-            return List.of();
-        }
-    }
+    
 
     private JsonNode parseJsonSafely(Object raw) {
         if (raw == null) return null;
