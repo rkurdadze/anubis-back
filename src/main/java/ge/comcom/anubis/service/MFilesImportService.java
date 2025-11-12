@@ -594,18 +594,25 @@ public class MFilesImportService {
     }
 
     private PropertyDataType guessType(String name, String value, boolean isMulti) {
+        if (value == null || value.isBlank()) {
+            return PropertyDataType.TEXT;
+        }
         String normalizedName = name == null ? "" : name.toLowerCase(Locale.ROOT);
-        String normalizedValue = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        String normalizedValue = value.trim().toLowerCase(Locale.ROOT);
 
-        if (!normalizedValue.isEmpty() && looksLikeDateValue(value)) {
+        // DATE: по содержимому или по имени
+        if (looksLikeDateValue(value) || normalizedName.contains("date") || normalizedName.contains("created") || normalizedName.contains("modified")) {
             return PropertyDataType.DATE;
         }
-        if (normalizedName.contains("date") || normalizedName.contains("created") || normalizedName.contains("modified")) {
-            return PropertyDataType.DATE;
-        }
+        // BOOLEAN: литералы булевых значений
         if (BOOLEAN_LITERALS.contains(normalizedValue)) {
             return PropertyDataType.BOOLEAN;
         }
+        // NUMBER: только цифры или десятичные числа с точкой или запятой
+        if (normalizedValue.matches("^-?\\d+(?:[.,]\\d+)?$")) {
+            return PropertyDataType.NUMBER;
+        }
+        // TEXT: по умолчанию
         return PropertyDataType.TEXT;
     }
 

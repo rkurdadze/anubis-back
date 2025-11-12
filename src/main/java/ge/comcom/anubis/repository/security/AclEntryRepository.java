@@ -15,5 +15,7 @@ public interface AclEntryRepository extends JpaRepository<AclEntry, Long> {
 
     Optional<AclEntry> findByIdAndAcl_Id(Long id, Long aclId);
 
+    Optional<AclEntry> findByAcl_IdAndGranteeTypeAndGranteeId(Long aclId, GranteeType granteeType, Long granteeId);
+
     boolean existsByAcl_IdAndGranteeTypeAndGranteeId(Long aclId, GranteeType granteeType, Long granteeId);
 }

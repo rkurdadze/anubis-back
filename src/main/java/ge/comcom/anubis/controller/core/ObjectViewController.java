@@ -1,8 +1,9 @@
-package ge.comcom.anubis.controller.view;
+package ge.comcom.anubis.controller.core;
 
-import ge.comcom.anubis.dto.ObjectDto;
+import ge.comcom.anubis.dto.ObjectVersionDto;
 import ge.comcom.anubis.dto.ObjectViewDto;
-import ge.comcom.anubis.entity.core.ObjectEntity;
+import ge.comcom.anubis.entity.core.ObjectVersionEntity;
+import ge.comcom.anubis.service.view.ObjectViewExecutionService;
 import ge.comcom.anubis.service.view.ObjectViewService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -30,6 +31,7 @@ import java.util.List;
 public class ObjectViewController {
 
     private final ObjectViewService service;
+    private final ObjectViewExecutionService executionService;
 
     // ============================================================
     // CRUD OPERATIONS
@@ -91,19 +93,43 @@ public class ObjectViewController {
     }
 
     // ============================================================
-    // EXECUTION
+    // EXECUTE VIEW WITH ACL
     // ============================================================
 
-    @GetMapping("/{id}/execute")
-    @Operation(summary = "Execute view",
-            description = "Executes the specified view and returns all repository objects "
-                    + "matching its filters (including relational filters).")
+    /**
+     * Executes a saved view with applied ACL (Access Control List) restrictions.
+     * <p>
+     * This operation behaves like opening a virtual folder in M-Files:
+     * it evaluates the view’s filters (properties, relationships, reverse links)
+     * and then filters the result set according to the current user’s permissions.
+     * </p>
+     *
+     * Example:
+     * <pre>
+     * GET /api/v1/views/42/execute/7
+     * </pre>
+     * will execute the saved view with ID 42 and return only the object versions
+     * accessible to user 7.
+     *
+     * @param id      ID of the saved view to execute
+     * @param userId  ID of the user executing the view (for ACL filtering)
+     * @return list of {@link ObjectVersionEntity} accessible to the given user
+     */
+    @GetMapping("/{id}/execute/{userId}")
+    @Operation(summary = "Execute view with ACL filtering",
+            description = "Executes the specified saved view and returns all object versions "
+                    + "visible to the given user, after applying property, relationship, "
+                    + "and access control (ACL) filters.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "View executed successfully."),
-            @ApiResponse(responseCode = "404", description = "View not found or no matching objects.")
+            @ApiResponse(responseCode = "200", description = "View executed successfully. "
+                    + "Returns list of accessible object versions."),
+            @ApiResponse(responseCode = "403", description = "User has no access to any matching objects."),
+            @ApiResponse(responseCode = "404", description = "View not found.")
     })
-    public ResponseEntity<List<ObjectDto>> executeView(
-            @Parameter(description = "View ID", example = "101") @PathVariable Long id) {
-        return ResponseEntity.ok(service.executeView(id));
+    public ResponseEntity<List<ObjectVersionDto>> executeWithAcl(
+            @Parameter(description = "View ID to execute", example = "42") @PathVariable("id") Long id,
+            @Parameter(description = "User ID for ACL filtering", example = "7") @PathVariable("userId") Long userId) {
+        List<ObjectVersionDto> result = executionService.execute(id, userId);
+        return ResponseEntity.ok(result);
     }
 }

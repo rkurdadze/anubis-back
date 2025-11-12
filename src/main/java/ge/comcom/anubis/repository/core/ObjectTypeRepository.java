@@ -12,11 +12,11 @@ public interface ObjectTypeRepository extends JpaRepository<ObjectType, Long> {
     boolean existsByVault_Id(Long vaultId);
 
     @Override
-    @EntityGraph(attributePaths = "vault")
+    @EntityGraph(attributePaths = {"vault", "acl"})
     List<ObjectType> findAll();
 
     @Override
-    @EntityGraph(attributePaths = "vault")
+    @EntityGraph(attributePaths = {"vault", "acl"})
     Optional<ObjectType> findById(Long id);
 
     Optional<ObjectType> findByNameIgnoreCase(String name);

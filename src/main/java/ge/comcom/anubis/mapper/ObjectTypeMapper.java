@@ -3,6 +3,7 @@ package ge.comcom.anubis.mapper;
 import ge.comcom.anubis.dto.ObjectTypeDto;
 import ge.comcom.anubis.entity.core.ObjectType;
 import ge.comcom.anubis.entity.core.VaultEntity;
+import ge.comcom.anubis.entity.security.Acl;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -17,6 +18,8 @@ public interface ObjectTypeMapper {
     @Mapping(source = "vault.id", target = "vaultId")
     @Mapping(source = "vault.name", target = "vaultName")
     @Mapping(source = "vault.active", target = "vaultActive")
+    @Mapping(source = "acl.id", target = "aclId")
+    @Mapping(source = "acl.name", target = "aclName")
     ObjectTypeDto toDto(ObjectType entity);
 
     // ===============================
@@ -24,6 +27,7 @@ public interface ObjectTypeMapper {
     // ===============================
     @InheritInverseConfiguration
     @Mapping(target = "vault", source = "vaultId", qualifiedByName = "mapVaultFromId")
+    @Mapping(target = "acl", source = "aclId", qualifiedByName = "mapAclFromId")
     ObjectType toEntity(ObjectTypeDto dto);
 
     // ===============================
@@ -36,6 +40,16 @@ public interface ObjectTypeMapper {
         }
         return VaultEntity.builder()
                 .id(vaultId)
+                .build();
+    }
+
+    @Named("mapAclFromId")
+    default Acl mapAclFromId(Long aclId) {
+        if (aclId == null) {
+            return null;
+        }
+        return Acl.builder()
+                .id(aclId)
                 .build();
     }
 }

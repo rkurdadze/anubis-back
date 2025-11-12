@@ -50,6 +50,14 @@ public class ObjectTypeService {
 
         existing.setName(updated.getName());
 
+        if (updated.getAcl() != null && updated.getAcl().getId() != null) {
+            existing.setAcl(updated.getAcl());
+        } else {
+            existing.setAcl(null);
+        }
+
+        existing.setNameI18n(updated.getNameI18n());
+
         if (updated.getVault() != null && updated.getVault().getId() != null) {
             VaultEntity vault = vaultRepository.findById(updated.getVault().getId())
                     .orElseThrow(() -> new EntityNotFoundException("Vault not found: " + updated.getVault().getId()));

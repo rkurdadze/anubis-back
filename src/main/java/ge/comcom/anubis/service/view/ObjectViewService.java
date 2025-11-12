@@ -2,6 +2,7 @@ package ge.comcom.anubis.service.view;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import ge.comcom.anubis.dto.ObjectDto;
+import ge.comcom.anubis.dto.ObjectVersionDto;
 import ge.comcom.anubis.dto.ObjectViewDto;
 import ge.comcom.anubis.dto.ViewGroupingDto;
 import ge.comcom.anubis.entity.core.ObjectEntity;
@@ -18,6 +19,7 @@ import ge.comcom.anubis.repository.meta.PropertyDefRepository;
 import ge.comcom.anubis.repository.security.UserRepository;
 import ge.comcom.anubis.repository.view.ObjectViewGroupingRepository;
 import ge.comcom.anubis.repository.view.ObjectViewRepository;
+import ge.comcom.anubis.service.view.ObjectViewExecutionService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -40,7 +43,8 @@ public class ObjectViewService {
     private final ObjectLinkRepository linkRepository;
     private final ObjectMapper objectMapper;
     private final ObjectViewMapper objectViewMapper;
-    private final com.fasterxml.jackson.databind.ObjectMapper om;
+
+    private final ObjectViewExecutionService executionService;
 
     public ObjectViewDto create(ObjectViewDto dto) {
         User creator = userRepository.findById(dto.getCreatedById())
@@ -50,7 +54,7 @@ public class ObjectViewService {
         entity.setCreatedBy(creator);
 
         // ✅ корректно парсим JSON перед сохранением
-        entity.setFilterJson(parseJsonSafely(dto.getFilterJson()));
+        entity.setFilterJson(executionService.parseJsonSafely(dto.getFilterJson()));
 
 
         ObjectViewEntity saved = viewRepository.save(entity);
@@ -70,7 +74,7 @@ public class ObjectViewService {
         view.setSortOrder(dto.getSortOrder());
 
         // ✅ корректно парсим и сохраняем как настоящий JSONB
-        view.setFilterJson(parseJsonSafely(dto.getFilterJson()));
+        view.setFilterJson(executionService.parseJsonSafely(dto.getFilterJson()));
 
 
         groupingRepository.deleteAll(groupingRepository.findAllByView_IdOrderByLevelAsc(id));
@@ -116,35 +120,6 @@ public class ObjectViewService {
         groupingRepository.saveAll(entities);
     }
 
-
-    public List<ObjectDto> executeView(Long viewId) {
-        log.info("▶️ Executing view id={}", viewId);
-        try {
-            ObjectViewEntity view = viewRepository.findById(viewId)
-                    .orElseThrow(() -> new EntityNotFoundException("View not found: " + viewId));
-
-            log.debug("Loaded view '{}', filter_json={}", view.getName(), view.getFilterJson());
-
-            if (view.getFilterJson() == null || view.getFilterJson().isNull()) {
-                throw new IllegalStateException("View has no defined filters (filter_json is missing).");
-            }
-
-            List<ObjectEntity> allObjects = objectRepository.findAll();
-            log.debug("Initial object count: {}", allObjects.size());
-
-            log.info(view.getFilterJson().toString(), "view.getFilterJson()");
-
-            List<ObjectEntity> filtered = applyCompoundFilter(view.getFilterJson(), allObjects);
-            log.info("✅ Executed view '{}' (id={}) -> {} result(s)", view.getName(), view.getId(), filtered.size());
-            List<ObjectDto> dtoResults = (filtered == null || filtered.isEmpty())
-                    ? List.of()
-                    : filtered.stream().map(objectMapper::toDto).toList();
-            return dtoResults;
-        } catch (Exception e) {
-            log.error("🔥 Unhandled error executing view id={} → {}", viewId, e.getMessage(), e);
-            throw e;
-        }
-    }
 
     /**
      * Рекурсивно применяет compound-фильтры (AND/OR) к списку объектов.
@@ -268,34 +243,7 @@ public class ObjectViewService {
     }
 
 
-    JsonNode parseJsonSafely(Object raw) {
-        if (raw == null) return null;
-        try {
-            // Если уже JsonNode
-            if (raw instanceof JsonNode node) return node;
 
-            // Если приходит строка, пробуем сначала обычный парсинг
-            if (raw instanceof String str) {
-                String trimmed = str.trim();
-
-                // если строка начинается и заканчивается кавычками — убираем их
-                if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-                    trimmed = trimmed.substring(1, trimmed.length() - 1)
-                            .replace("\\\"", "\"")
-                            .replace("\\\\", "\\");
-                }
-
-                return om.readTree(trimmed);
-            }
-
-            // fallback — valueToTree
-            return om.valueToTree(raw);
-
-        } catch (Exception e) {
-            log.error("❌ JSON parse failed: {}", e.getMessage(), e);
-            return null;
-        }
-    }
 
 
 }

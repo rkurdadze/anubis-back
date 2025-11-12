@@ -116,8 +116,14 @@ public class AclManagementService {
 
         validateGrantee(request.getGranteeType(), request.getGranteeId());
 
-        if (aclEntryRepository.existsByAcl_IdAndGranteeTypeAndGranteeId(aclId, request.getGranteeType(), request.getGranteeId())) {
-            throw new IllegalArgumentException("ACL entry already exists for this grantee");
+        AclEntry existing = aclEntryRepository
+                .findByAcl_IdAndGranteeTypeAndGranteeId(aclId, request.getGranteeType(), request.getGranteeId())
+                .orElse(null);
+
+        if (existing != null) {
+            aclEntryMapper.updateEntityFromRequest(request, existing);
+            AclEntry updated = aclEntryRepository.save(existing);
+            return aclEntryMapper.toDto(updated);
         }
 
         AclEntry entry = aclEntryMapper.toEntity(request);

@@ -28,5 +28,13 @@ public class ObjectTypeDto {
     @Schema(description = "Vault name (read-only)", example = "Main Vault", accessMode = Schema.AccessMode.READ_ONLY)
     private String vaultName;
 
+    @Schema(description = "Indicates if the vault is active (read-only)", example = "true", accessMode = Schema.AccessMode.READ_ONLY)
     private Boolean vaultActive;
+
+    @Schema(description = "ACL ID associated with this object type", example = "5")
+    private Long aclId;
+
+    @Schema(description = "ACL name (read-only)", example = "Default Class Permissions", accessMode = Schema.AccessMode.READ_ONLY)
+    private String aclName;
+
 }

@@ -1,6 +1,7 @@
 package ge.comcom.anubis.service.view;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import ge.comcom.anubis.dto.ObjectVersionDto;
 import ge.comcom.anubis.entity.core.ObjectVersionEntity;
 import ge.comcom.anubis.entity.view.ObjectViewEntity;
 import ge.comcom.anubis.repository.view.ObjectViewRepository;
@@ -20,6 +21,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import ge.comcom.anubis.mapper.ObjectVersionMapper;
 import java.util.*;
 
 /**
@@ -43,16 +45,17 @@ public class ObjectViewExecutionService {
     private final FullTextSearchService fullTextSearchService;
     private final AclResolverService aclResolverService;
     private final AclService aclService;
-    private final ObjectViewService viewService;
+    private final ObjectVersionMapper versionMapper;
+    private final com.fasterxml.jackson.databind.ObjectMapper om;
 
     @PersistenceContext
     private EntityManager em;
 
-    public List<ObjectVersionEntity> execute(Long viewId, Long userId) {
+    public List<ObjectVersionDto> execute(Long viewId, Long userId) {
         ObjectViewEntity view = viewRepository.findById(viewId)
                 .orElseThrow(() -> new IllegalArgumentException("View not found: " + viewId));
 
-        JsonNode filterJson = viewService.parseJsonSafely(view.getFilterJson());
+        JsonNode filterJson = parseJsonSafely(view.getFilterJson());
         if (log.isDebugEnabled()) {
             log.debug("Starting execute(): viewId={}, userId={}, filterJson={}", viewId, userId, filterJson);
         }
@@ -170,8 +173,41 @@ public class ObjectViewExecutionService {
         @SuppressWarnings("unchecked")
         List<ObjectVersionEntity> result = q2.getResultList();
 
-        log.info("✅ Executed view {} for user {} → {} version(s)", viewId, userId, result.size());
-        return result;
+        List<ObjectVersionDto> dtoList = result.stream()
+            .map(versionMapper::toDto)
+            .toList();
+
+        log.info("✅ Executed view {} for user {} → {} version(s)", viewId, userId, dtoList.size());
+        return dtoList;
+    }
+
+    public JsonNode parseJsonSafely(Object raw) {
+        if (raw == null) return null;
+        try {
+            // Если уже JsonNode
+            if (raw instanceof JsonNode node) return node;
+
+            // Если приходит строка, пробуем сначала обычный парсинг
+            if (raw instanceof String str) {
+                String trimmed = str.trim();
+
+                // если строка начинается и заканчивается кавычками — убираем их
+                if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+                    trimmed = trimmed.substring(1, trimmed.length() - 1)
+                            .replace("\\\"", "\"")
+                            .replace("\\\\", "\\");
+                }
+
+                return om.readTree(trimmed);
+            }
+
+            // fallback — valueToTree
+            return om.valueToTree(raw);
+
+        } catch (Exception e) {
+            log.error("❌ JSON parse failed: {}", e.getMessage(), e);
+            return null;
+        }
     }
 
     /* ================== INTERNAL: SQL builder ================== */
