@@ -132,6 +132,8 @@ public class ObjectViewService {
             List<ObjectEntity> allObjects = objectRepository.findAll();
             log.debug("Initial object count: {}", allObjects.size());
 
+            log.info(view.getFilterJson().toString(), "view.getFilterJson()");
+
             List<ObjectEntity> filtered = applyCompoundFilter(view.getFilterJson(), allObjects);
             log.info("✅ Executed view '{}' (id={}) -> {} result(s)", view.getName(), view.getId(), filtered.size());
             List<ObjectDto> dtoResults = (filtered == null || filtered.isEmpty())
@@ -264,9 +266,9 @@ public class ObjectViewService {
             return 0;
         }
     }
-    
 
-    private JsonNode parseJsonSafely(Object raw) {
+
+    JsonNode parseJsonSafely(Object raw) {
         if (raw == null) return null;
         try {
             // Если уже JsonNode
