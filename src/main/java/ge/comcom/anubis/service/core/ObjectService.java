@@ -7,6 +7,7 @@ import ge.comcom.anubis.entity.security.User;
 import ge.comcom.anubis.enums.LinkDirection;
 import ge.comcom.anubis.mapper.ObjectMapper;
 import ge.comcom.anubis.repository.core.*;
+import ge.comcom.anubis.repository.core.FileBinaryRepository;
 import ge.comcom.anubis.repository.meta.PropertyDefRepository;
 import ge.comcom.anubis.repository.meta.PropertyValueRepository;
 import ge.comcom.anubis.repository.meta.ValueListItemRepository;
@@ -47,6 +48,8 @@ public class ObjectService {
     private final ObjectMapper objectMapper;
     private final ObjectVersionService objectVersionService;
     private final ObjectVersionAuditService auditService;
+
+    private final FileBinaryRepository fileBinaryRepository;
 
 
     private final PropertyDefRepository propertyDefRepository;
@@ -137,6 +140,14 @@ public class ObjectService {
         }
         objectRepository.deleteById(id);
         log.warn("Hard-deleted object ID {}", id);
+        // 🧹 Очистка осиротевших бинарных файлов
+        if (fileBinaryRepository != null) {
+            List<Long> orphanIds = fileBinaryRepository.findOrphans();
+            if (!orphanIds.isEmpty()) {
+                fileBinaryRepository.deleteAllById(orphanIds);
+                log.info("🧹 Removed {} orphan file binaries after hardDelete({})", orphanIds.size(), id);
+            }
+        }
     }
 
     /**

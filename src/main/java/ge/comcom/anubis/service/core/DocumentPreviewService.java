@@ -56,7 +56,7 @@ public class DocumentPreviewService {
         FileDownload download = fileService.loadFile(fileId);
         var file = download.getFile();
         String filename = file.getFileName();
-        String mimeType = file.getMimeType();
+        String mimeType = file.getBinary() != null ? file.getBinary().getMimeType() : null;
 
         if (!properties.isEnabled()) {
             throw new IllegalStateException("Document preview service disabled");
@@ -87,7 +87,10 @@ public class DocumentPreviewService {
      * Пытается конвертировать через Gotenberg, при ошибке — возвращает no_preview.jpg
      */
     private PreviewDocument convertToPdfWithFallback(FileDownload download) {
-        String endpoint = resolveEndpoint(download.getFile().getMimeType(), download.getFile().getFileName());
+        String endpoint = resolveEndpoint(
+                download.getFile().getBinary() != null ? download.getFile().getBinary().getMimeType() : null,
+                download.getFile().getFileName()
+        );
         String url = buildUrl(endpoint);
 
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();

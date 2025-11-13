@@ -1,4 +1,6 @@
 package ge.comcom.anubis.service.core;
+import ge.comcom.anubis.entity.core.FileBinaryEntity;
+import ge.comcom.anubis.repository.core.FileBinaryRepository;
 
 import ge.comcom.anubis.dto.ObjectFileDto;
 import ge.comcom.anubis.entity.core.FileStorageEntity;
@@ -17,9 +19,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Comparator;
+import java.util.stream.Collectors;
 
 /**
  * Service for managing object files and linking them with versions.
@@ -40,6 +45,7 @@ public class FileService {
     private final StorageStrategyRegistry strategyRegistry;
     private final FullTextSearchService fullTextSearchService;
     private final ObjectFileMapper objectFileMapper;
+    private final FileBinaryRepository binaryRepository;
 
     private static final String DEFAULT_VERSION_COMMENT = "Auto-version from upload";
 
@@ -48,9 +54,18 @@ public class FileService {
      */
     @Transactional(readOnly = true)
     public List<ObjectFileDto> getFilesByObject(Long objectId) {
-        return fileRepository.findByVersionObjectIdOrderByVersionCreatedAtDesc(objectId).stream()
-                .map(objectFileMapper::toDto)
-                .toList();
+        var allFiles = fileRepository.findAllByObjectId(objectId);
+
+        return allFiles.stream()
+            .collect(Collectors.groupingBy(f -> f.getBinary().getId()))
+            .values().stream()
+            .map(list -> list.stream()
+                .max(Comparator.comparing(f -> f.getVersion().getId()))
+                .orElse(null))
+            .filter(Objects::nonNull)
+            .filter(f -> !f.isDeleted())
+            .map(objectFileMapper::toDto)
+            .toList();
     }
 
     /**
@@ -58,9 +73,42 @@ public class FileService {
      */
     @Transactional(readOnly = true)
     public List<ObjectFileDto> getFilesByVersion(Long versionId) {
-        return fileRepository.findByVersion_Id(versionId).stream()
-                .map(objectFileMapper::toDto)
-                .toList();
+        var targetVersion = versionService.getById(versionId);
+        Long objectId = targetVersion.getObject().getId();
+
+        var allFiles = fileRepository.findAllByObjectId(objectId);
+
+        return allFiles.stream()
+            .filter(f -> f.getVersion().getId() <= versionId)
+            .collect(Collectors.groupingBy(f -> f.getBinary().getId()))
+            .values().stream()
+            .map(list -> list.stream()
+                .max(Comparator.comparing(f -> f.getVersion().getId()))
+                .orElse(null))
+            .filter(Objects::nonNull)
+            .filter(f -> {
+                {
+                    // История файла (все состояния по одному логическому файлу = binary id)
+                    var history = allFiles.stream()
+                        .filter(x -> Objects.equals(x.getBinary().getId(), f.getBinary().getId()))
+                        .toList();
+
+                    // Первая версия, где файл стал deleted=true
+                    Long deletedAt = history.stream()
+                        .filter(ObjectFileEntity::isDeleted)
+                        .map(x -> x.getVersion().getId())
+                        .min(Long::compareTo)
+                        .orElse(null);
+
+                    // Если файл никогда не удалялся → показываем
+                    if (deletedAt == null) return true;
+
+                    // Если удалён после выбранной версии → показываем
+                    return deletedAt > versionId;
+                }
+            })
+            .map(objectFileMapper::toDto)
+            .toList();
     }
 
     /**
@@ -106,20 +154,8 @@ public class FileService {
             throw new IllegalArgumentException("filename is required for file metadata");
         }
 
-        if (dto.getMimeType() != null) {
-            entity.setMimeType(dto.getMimeType());
-        }
 
-        if (dto.getSize() != null) {
-            entity.setFileSize(dto.getSize());
-        }
 
-        if (entity.getStorage() == null) {
-            FileStorageEntity storage = vaultService.resolveStorageForObject(targetVersion.getObject());
-            if (storage != null) {
-                entity.setStorage(storage);
-            }
-        }
 
         ObjectFileEntity saved = fileRepository.save(entity);
 
@@ -167,21 +203,26 @@ public class FileService {
             throw new IllegalStateException("No storage configured for vault: " + vault.getName());
         }
 
-        var strategy = strategyRegistry.resolve(storage);
+        // Create FileBinaryEntity
+        FileBinaryEntity binary = new FileBinaryEntity();
+        binary.setInline(true);
+        binary.setContent(file.getBytes());
+        binary.setSha256(computeSha256(file.getBytes()));
+        binary.setMimeType(file.getContentType());
+        binary.setSize(file.getSize());
+        binary.setCreatedAt(Instant.now());
+        binary = binaryRepository.save(binary);
 
         ObjectFileEntity entity = new ObjectFileEntity();
         entity.setFileName(file.getOriginalFilename());
-        entity.setMimeType(file.getContentType());
-        entity.setFileSize(file.getSize());
-        entity.setStorage(storage);
+        entity.setBinary(binary);
 
         ObjectVersionEntity version = null;
         boolean versionCreatedHere = effectiveOptions.getTargetVersionId() == null;
         ObjectFileEntity savedFile = null;
 
         try {
-            // 3. СНАЧАЛА СОХРАНЯЕМ ФАЙЛ (критическая операция)
-            strategy.save(storage, entity, file);
+            // 3. СНАЧАЛА СОХРАНЯЕМ бинарь (уже сохранён выше)
 
             // 4. ТОЛЬКО ПОСЛЕ УСПЕХА — создаём версию
             if (versionCreatedHere) {
@@ -227,15 +268,6 @@ public class FileService {
             // 8. ОШИБКА: откат + аудит
             log.error("Failed to upload file '{}': {}", file.getOriginalFilename(), e.getMessage(), e);
 
-            // Удаляем файл, если он был частично сохранён
-            if (entity.getExternalFilePath() != null || entity.isInline()) {
-                try {
-                    strategy.delete(entity);
-                } catch (Exception deleteEx) {
-                    log.warn("Failed to cleanup partially saved file: {}", deleteEx.getMessage());
-                }
-            }
-
             // Удаляем версию, если она была создана
             if (version != null && versionCreatedHere) {
                 try {
@@ -263,10 +295,10 @@ public class FileService {
     @Transactional(readOnly = true)
     public FileDownload loadFile(Long fileId) throws IOException {
         ObjectFileEntity file = getFile(fileId);
-        var strategy = strategyRegistry.resolve(file.getStorage());
-        byte[] data = strategy.load(file);
+        FileBinaryEntity binary = file.getBinary();
+        byte[] data = binary != null ? binary.getContent() : null;
         if (data == null) {
-            throw new IOException("Storage strategy returned null content for file " + fileId);
+            throw new IOException("Binary content is null for file " + fileId);
         }
         return new FileDownload(file, data);
     }
@@ -283,20 +315,13 @@ public class FileService {
                 "File deleted: " + fileName
         );
 
-        FileStorageEntity storage = file.getStorage();
-        if (storage == null) {
-            storage = vaultService.resolveStorageForObject(newVersion.getObject());
-        }
-
-        var strategy = strategyRegistry.resolve(storage);
-
-        try {
-            strategy.delete(file);
-        } catch (IOException e) {
-            log.error("Failed to delete file content for '{}': {}", fileName, e.getMessage());
-        }
-
-        fileRepository.delete(file);
+        // Soft delete: create a new ObjectFileEntity with deleted=true, same binary, new version
+        ObjectFileEntity deletedEntry = new ObjectFileEntity();
+        deletedEntry.setVersion(newVersion);
+        deletedEntry.setDeleted(true);
+        deletedEntry.setFileName(fileName);
+        deletedEntry.setBinary(file.getBinary());
+        fileRepository.save(deletedEntry);
 
         auditService.logAction(
                 newVersion,
@@ -329,22 +354,21 @@ public class FileService {
                 "File updated: " + effectiveName
         );
 
-        FileStorageEntity storage = file.getStorage();
-        if (storage == null) {
-            storage = vaultService.resolveStorageForObject(newVersion.getObject());
-            file.setStorage(storage);
-        }
+        // Create new FileBinaryEntity for updated content
+        FileBinaryEntity updatedBinary = new FileBinaryEntity();
+        updatedBinary.setInline(true);
+        updatedBinary.setContent(newFile.getBytes());
+        updatedBinary.setSha256(computeSha256(newFile.getBytes()));
+        updatedBinary.setMimeType(newFile.getContentType());
+        updatedBinary.setSize(newFile.getSize());
+        updatedBinary.setCreatedAt(Instant.now());
+        updatedBinary = binaryRepository.save(updatedBinary);
 
-        var strategy = strategyRegistry.resolve(storage);
-
-        strategy.save(file.getStorage(), file, newFile);
-
-        file.setVersion(newVersion);
-        file.setFileName(effectiveName);
-        file.setMimeType(newFile.getContentType());
-        file.setFileSize(newFile.getSize());
-
-        ObjectFileEntity updated = fileRepository.save(file);
+        ObjectFileEntity updatedEntry = new ObjectFileEntity();
+        updatedEntry.setVersion(newVersion);
+        updatedEntry.setBinary(updatedBinary);
+        updatedEntry.setFileName(effectiveName);
+        ObjectFileEntity updated = fileRepository.save(updatedEntry);
 
         triggerAsyncIndexing(updated);
 
@@ -477,6 +501,21 @@ public class FileService {
 
         public byte[] getContent() {
             return content;
+        }
+    }
+
+    private static String computeSha256(byte[] data) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(data);
+
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to compute sha256", e);
         }
     }
 

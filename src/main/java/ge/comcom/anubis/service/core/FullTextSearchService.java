@@ -127,7 +127,7 @@ public class FullTextSearchService {
             log.error(errorMessage, e);
             notifyFileIndexed(fileEntity.getId(), versionId, false, errorMessage);
         } finally {
-            if (fileEntity.isInline() && localFile != null) {
+            if (localFile != null) {
                 try {
                     Files.deleteIfExists(localFile.toPath());
                 } catch (IOException ignored) {
@@ -145,18 +145,16 @@ public class FullTextSearchService {
 
     private File getLocalFile(ObjectFileEntity fileEntity) {
         try {
-            if (fileEntity.isInline() && fileEntity.getContent() != null) {
+            if (fileEntity.getBinary() != null && fileEntity.getBinary().getContent() != null) {
                 String ext = extensionOf(fileEntity.getFileName());
                 if (ext.isBlank()) {
                     ext = "bin";
                 }
                 File tmp = File.createTempFile("anubis-inline-", "." + ext);
                 try (OutputStream out = Files.newOutputStream(tmp.toPath())) {
-                    out.write(fileEntity.getContent());
+                    out.write(fileEntity.getBinary().getContent());
                 }
                 return tmp;
-            } else if (fileEntity.getExternalFilePath() != null) {
-                return new File(fileEntity.getExternalFilePath());
             }
         } catch (IOException e) {
             log.error("Cannot create local copy for file {}: {}", fileEntity.getId(), e.getMessage());
@@ -313,7 +311,7 @@ public class FullTextSearchService {
                 if (r instanceof Number n) ids.add(n.longValue());
             }
 
-            log.debug("FTS [{}:{}] '{}' -> {} results", tsFunction, config, queryText, ids.size());
+            log.debug("FTS [{}:{}] '{}' '{}' -> {} results", tsFunction, config, queryText, ids.size());
             return ids;
 
         } catch (Exception e) {

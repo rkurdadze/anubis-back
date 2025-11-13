@@ -2,8 +2,6 @@ package ge.comcom.anubis.entity.core;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 /**
  * Represents a single file attached to a specific object version.
@@ -39,32 +37,18 @@ public class ObjectFileEntity {
     @Column(name = "file_name", nullable = false)
     private String fileName;
 
-    /** Binary file content, if stored inline in DB */
-    @Lob
-    @JdbcTypeCode(SqlTypes.BINARY)
-    @Column(name = "file_data")
-    private byte[] content;
-
-    /** External path or object key for FS/S3 storages */
-    @Column(name = "external_file_path")
-    private String externalFilePath;
-
     /** FK → file_storage.storage_id (defines storage type & config) */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "storage_id")
     private FileStorageEntity storage;
 
-    /** TRUE → stored inline in DB, FALSE → in FS/S3 */
-    @Builder.Default
-    @Column(name = "inline")
-    private boolean inline = true;
+    /** Soft-delete flag: TRUE → file is logically deleted */
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted = false;
 
-    /** File size in bytes */
-    @Column(name = "file_size")
-    private Long fileSize;
 
-    /** MIME type, e.g. "application/pdf" */
-    @Column(name = "content_type")
-    private String mimeType;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "binary_id", nullable = false)
+    private FileBinaryEntity binary;
 
 }

@@ -1,5 +1,6 @@
 package ge.comcom.anubis.service.storage;
 
+import ge.comcom.anubis.entity.core.FileBinaryEntity;
 import ge.comcom.anubis.entity.core.FileStorageEntity;
 import ge.comcom.anubis.entity.core.ObjectFileEntity;
 import lombok.extern.slf4j.Slf4j;
@@ -17,9 +18,13 @@ public class S3StorageStrategy implements FileStorageStrategy {
     public void save(FileStorageEntity storage, ObjectFileEntity entity, MultipartFile file) throws IOException {
         String key = UUID.randomUUID() + "_" + file.getOriginalFilename();
         // Здесь можно вызвать MinIO / AWS SDK клиент для загрузки
-        entity.setInline(false);
-        entity.setExternalFilePath(key);
-        entity.setContent(null);
+        var binary = new FileBinaryEntity();
+        binary.setInline(false);
+        binary.setExternalPath(key);
+        binary.setContent(null);
+        binary.setMimeType(file.getContentType());
+        binary.setSize(file.getSize());
+        entity.setBinary(binary);
         log.info("Stored file '{}' in S3 bucket '{}' with key '{}'", file.getOriginalFilename(), storage.getBucket(), key);
     }
 
@@ -30,6 +35,7 @@ public class S3StorageStrategy implements FileStorageStrategy {
 
     @Override
     public void delete(ObjectFileEntity entity) {
-        log.info("Deleted file from S3: {}", entity.getExternalFilePath());
+        log.info("Deleted file from S3: {}",
+                 entity.getBinary() != null ? entity.getBinary().getExternalPath() : null);
     }
 }

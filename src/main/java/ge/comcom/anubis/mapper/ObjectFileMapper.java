@@ -10,25 +10,20 @@ public interface ObjectFileMapper {
     @Mapping(target = "objectId", source = "version.object.id")
     @Mapping(target = "versionId", source = "version.id")
     @Mapping(target = "filename", source = "fileName")
-    @Mapping(target = "size", source = "fileSize")
+    @Mapping(target = "size", source = "binary.size")
+    @Mapping(target = "mimeType", source = "binary.mimeType")
     ObjectFileDto toDto(ObjectFileEntity entity);
 
     @Mapping(target = "version", ignore = true)
-    @Mapping(target = "content", ignore = true)
-    @Mapping(target = "externalFilePath", ignore = true)
-    @Mapping(target = "storage", ignore = true)
-    @Mapping(target = "inline", ignore = true)
+    @Mapping(target = "binary", ignore = true)
     @Mapping(target = "fileName", source = "filename")
-    @Mapping(target = "fileSize", source = "size")
+    @Mapping(target = "deleted", ignore = true)
     ObjectFileEntity toEntity(ObjectFileDto dto);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "version", ignore = true)
-    @Mapping(target = "content", ignore = true)
-    @Mapping(target = "externalFilePath", ignore = true)
-    @Mapping(target = "storage", ignore = true)
-    @Mapping(target = "inline", ignore = true)
+    @Mapping(target = "binary", ignore = true)
     @Mapping(target = "fileName", source = "filename")
-    @Mapping(target = "fileSize", source = "size")
+    @Mapping(target = "deleted", ignore = true)
     void updateEntityFromDto(ObjectFileDto dto, @MappingTarget ObjectFileEntity entity);
 }

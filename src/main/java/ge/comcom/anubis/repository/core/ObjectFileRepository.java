@@ -17,9 +17,16 @@ public interface ObjectFileRepository extends JpaRepository<ObjectFileEntity, Lo
 
     @EntityGraph(attributePaths = {"version", "version.object"})
     @Query("""
+           SELECT f FROM ObjectFileEntity f
+           WHERE f.version.object.id = :objectId
+    """)
+    List<ObjectFileEntity> findAllByObjectId(Long objectId);
+
+    @EntityGraph(attributePaths = {"version", "version.object"})
+    @Query("""
             SELECT f FROM ObjectFileEntity f
-            WHERE (LOWER(f.mimeType) LIKE 'image/%')
-               OR LOWER(f.mimeType) = 'application/pdf'
+            WHERE (LOWER(f.binary.mimeType) LIKE 'image/%')
+               OR LOWER(f.binary.mimeType) = 'application/pdf'
                OR LOWER(f.fileName) LIKE '%.tif'
                OR LOWER(f.fileName) LIKE '%.tiff'
                OR LOWER(f.fileName) LIKE '%.jpg'

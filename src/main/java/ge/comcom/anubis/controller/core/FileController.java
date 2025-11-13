@@ -81,9 +81,9 @@ public class FileController {
             ByteArrayResource resource = new ByteArrayResource(download.getContent());
             String filename = file.getFileName();
             String safeFilename = (filename == null || filename.isBlank()) ? "file" : filename;
-            String mimeType = file.getMimeType();
-            long contentLength = file.getFileSize() != null
-                    ? file.getFileSize()
+            String mimeType = (file.getBinary() != null ? file.getBinary().getMimeType() : null);
+            long contentLength = (file.getBinary() != null && file.getBinary().getSize() != null)
+                    ? file.getBinary().getSize()
                     : download.getContent().length;
 
             ContentDisposition contentDisposition = ContentDisposition.attachment()

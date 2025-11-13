@@ -1,5 +1,6 @@
 package ge.comcom.anubis.service.storage;
 
+import ge.comcom.anubis.entity.core.FileBinaryEntity;
 import ge.comcom.anubis.entity.core.FileStorageEntity;
 import ge.comcom.anubis.entity.core.ObjectFileEntity;
 import lombok.extern.slf4j.Slf4j;
@@ -22,20 +23,24 @@ public class DiskStorageStrategy implements FileStorageStrategy {
         Path path = base.resolve(file.getOriginalFilename());
         Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
 
-        entity.setInline(false);
-        entity.setExternalFilePath(path.toString());
-        entity.setContent(null);
+        var binary = new FileBinaryEntity();
+        binary.setInline(false);
+        binary.setExternalPath(path.toString());
+        binary.setContent(null);
+        binary.setMimeType(file.getContentType());
+        binary.setSize(file.getSize());
+        entity.setBinary(binary);
 
         log.info("Stored file '{}' on disk at {}", entity.getFileName(), path);
     }
 
     @Override
     public byte[] load(ObjectFileEntity entity) throws IOException {
-        return Files.readAllBytes(Paths.get(entity.getExternalFilePath()));
+        return Files.readAllBytes(Paths.get(entity.getBinary().getExternalPath()));
     }
 
     @Override
     public void delete(ObjectFileEntity entity) throws IOException {
-        Files.deleteIfExists(Paths.get(entity.getExternalFilePath()));
+        Files.deleteIfExists(Paths.get(entity.getBinary().getExternalPath()));
     }
 }
