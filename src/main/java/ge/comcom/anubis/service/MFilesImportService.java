@@ -119,6 +119,15 @@ public class MFilesImportService {
     private static final Set<String> BOOLEAN_LITERALS = Set.of("yes", "no", "true", "false", "1", "0");
 
     /**
+     * Ручные переопределения типов колонок (нормализованные имена)
+     */
+    private static final Map<String, PropertyDataType> MANUAL_TYPE_OVERRIDES = Map.of(
+            "თარიღი", PropertyDataType.TEXT,
+            "ნომერი", PropertyDataType.TEXT,
+            "დამატებითი დოკუმენტების ნომრები", PropertyDataType.TEXT
+    );
+
+    /**
      * Колонка вида "Название [id<:ver>]"?
      */
     private boolean isIdVerColumn(String col) {
@@ -128,17 +137,6 @@ public class MFilesImportService {
     }
 
     /**
-     * Базовое имя без хвоста " [id<:ver>]"
-     */
-    private String baseNameFromIdVer(String col) {
-        if (col == null) return "";
-        String s = col.replace("\uFEFF", "").trim();
-        int idx = s.lastIndexOf(" [id<:ver>]");
-        return idx >= 0 ? s.substring(0, idx).trim() : s;
-    }
-
-
-    /**
      * Проверяет, есть ли у таблицы пара колонок вида "Имя" и "Имя [id<:ver>]"
      */
     private boolean hasIdVerPair(Map<String, Integer> headers, String baseName) {
@@ -146,13 +144,6 @@ public class MFilesImportService {
                 normalizeHeader(h).equals(normalizeHeader(baseName + " [id<:ver>]")));
     }
 
-    /**
-     * Возвращает значение из "id" колонки, если такая пара есть
-     */
-    private String findIdVerValue(CSVRecord row, Map<String, String> headerAlias, String baseName) {
-        String idCol = baseName + " [id<:ver>]";
-        return value(row, headerAlias, idCol);
-    }
 
     public ImportSummary importBackup(Path backupRoot, Long vaultId) {
         VaultEntity vault = resolveVault(vaultId);
@@ -227,15 +218,8 @@ public class MFilesImportService {
             );
             for (CSVRecord row : parser) {
                 stats.total++;
-                try {
-                    importRow(row, headers, headerAlias, excluded, filesDir, vault, stats);
-                    stats.success++;
-                } catch (Exception e) {
-                    stats.failed++;
-                    String msg = String.format("Ошибка импорта строки #%d: %s", row.getRecordNumber(), e.getMessage());
-                    log.error("❌ {}", msg, e);
-                    stats.errors.add(msg);
-                }
+                importRow(row, headers, headerAlias, excluded, filesDir, vault, stats);
+                stats.success++;
             }
         } catch (Exception e) {
             log.error("❌ Ошибка чтения/парсинга CSV: {}", e.getMessage(), e);
@@ -284,14 +268,6 @@ public class MFilesImportService {
         return vault;
     }
 
-    private VaultEntity resolveDefaultVault() {
-        // Предпочтительно — по коду; при необходимости замените на ваш способ поиска
-        VaultEntity vault = vaultService.getVaultByCode(defaultVaultCode);
-        if (vault == null) {
-            throw new IllegalStateException("Не найден Vault по коду: " + defaultVaultCode);
-        }
-        return vault;
-    }
 
     private Path findCsv(Path dir) throws IOException {
         return Files.list(dir)
@@ -334,9 +310,39 @@ public class MFilesImportService {
         ObjectType objectType = upsertObjectTypeWithVault(objectTypeName, defaultVault);
         ObjectClass objectClass = classService.upsertByName(objectType, className);
 
-        // Имя объекта
-        String objectName = Optional.ofNullable(value(row, headerAlias, "Name"))
-                .orElse(Optional.ofNullable(value(row, headerAlias, "Name or title")).orElse(className));
+        // Имя объекта: derive from FILE_COL and normalize according to rules
+        String fileColumnValue = value(row, headerAlias, FILE_COL);
+        if (fileColumnValue == null || fileColumnValue.isBlank()) {
+            throw new RuntimeException("File column is empty, cannot derive object name");
+        }
+
+        // Extract filename without directories
+        String fileOnly = fileColumnValue.replace("\\", "/");
+        int lastSlash = fileOnly.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            fileOnly = fileOnly.substring(lastSlash + 1);
+        }
+
+        // Remove extension if present
+        int dotIdx = fileOnly.lastIndexOf('.');
+        if (dotIdx > 0) {
+            fileOnly = fileOnly.substring(0, dotIdx);
+        }
+
+        // Remove all bracketed parts: "(...)" including ID blocks and other brackets
+        fileOnly = fileOnly.replaceAll("\\([^)]*\\)", "");
+
+        // Replace "{2}" with "/"
+        fileOnly = fileOnly.replace("{2}", "/");
+
+        // Trim remaining whitespace
+        fileOnly = fileOnly.trim();
+
+        // Final object name
+        String objectName = fileOnly;
+        if (objectName.isBlank()) {
+            throw new RuntimeException("Derived object name is empty after normalization");
+        }
 
         Optional<ObjectEntity> existing = objectService.findByTypeClassAndName(
                 objectClass.getObjectType().getId(),
@@ -402,6 +408,13 @@ public class MFilesImportService {
                     log.info("🆕 Автоматически создано свойство '{}' для класса '{}'", cleanCol, objectClass.getName());
                     return created;
                 });
+                // --- enforce manual type overrides if present
+                PropertyDataType override = MANUAL_TYPE_OVERRIDES.get(cleanCol.trim().toLowerCase(Locale.ROOT));
+                if (override != null && def.getDataType() != override) {
+                    def.setDataType(override);
+                    propertyDefRepository.save(def);
+                    log.info("🔧 Type of property '{}' overridden to {} due to manual override", cleanCol, override);
+                }
 
                 if (hasPair) {
                     def = ensureValueListProperty(def, isMulti);
@@ -416,11 +429,41 @@ public class MFilesImportService {
                 }
 
                 switch (def.getDataType()) {
-                    case BOOLEAN -> objectService.setValue(obj, def, parseBoolean(raw));
+                    case BOOLEAN -> {
+                        try {
+                            objectService.setValue(obj, def, parseBoolean(raw));
+                        } catch (Exception e) {
+                            throw new RuntimeException(
+                                    "Error setting BOOLEAN value for column '" + cleanCol +
+                                    "'. Expected formats: yes/no/true/false/1/0. " +
+                                    "Actual value='" + raw + "'.", e);
+                        }
+                    }
                     case DATE -> {
-                        LocalDateTime dt = tryParseDate(raw);
-                        if (dt != null) {
+                        try {
+                            LocalDateTime dt = tryParseDate(raw);
+                            if (dt == null) {
+                                throw new RuntimeException(
+                                        "Error parsing DATE for column '" + cleanCol +
+                                        "'. Expected date formats such as YYYY-MM-DD, M/D/YYYY, etc. " +
+                                        "Actual value='" + raw + "'.");
+                            }
                             objectService.setValue(obj, def, dt.toLocalDate());
+                        } catch (Exception e) {
+                            throw new RuntimeException(
+                                    "Error setting DATE value for column '" + cleanCol +
+                                    "'. Actual value='" + raw + "'.", e);
+                        }
+                    }
+                    case NUMBER -> {
+                        try {
+                            new java.math.BigDecimal(raw.replace(",", "."));
+                            objectService.setValue(obj, def, raw);
+                        } catch (Exception e) {
+                            throw new RuntimeException(
+                                    "Error setting NUMBER for column '" + cleanCol + "'. " +
+                                    "Expected numeric format (example: 123, 123.45). " +
+                                    "Actual value='" + raw + "'.", e);
                         }
                     }
                     default -> objectService.setValue(obj, def, raw);
@@ -575,25 +618,13 @@ public class MFilesImportService {
         return (v == null || v.isBlank()) ? def : v;
     }
 
-    // Simple overloads (no alias) -- kept for backward compatibility, not used in import flow
-    private String safe(CSVRecord row, String col, String def) {
-        try {
-            String v = row.get(col);
-            return (v == null || v.isBlank()) ? def : v.trim();
-        } catch (Exception e) {
-            return def;
-        }
-    }
-
-    private String value(CSVRecord row, String col) {
-        try {
-            return Optional.ofNullable(row.get(col)).map(String::trim).orElse(null);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     private PropertyDataType guessType(String name, String value, boolean isMulti) {
+        if (name != null) {
+            String normalized = name.trim().toLowerCase(Locale.ROOT);
+            if (MANUAL_TYPE_OVERRIDES.containsKey(normalized)) {
+                return MANUAL_TYPE_OVERRIDES.get(normalized);
+            }
+        }
         if (value == null || value.isBlank()) {
             return PropertyDataType.TEXT;
         }
