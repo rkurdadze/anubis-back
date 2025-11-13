@@ -65,7 +65,78 @@ public class MFilesImportService {
     private final ObjectVersionService objectVersionService;
     private final FileService fileService;
     private final VaultService vaultService;
+
     private final FileStorageAdminService fileStorageAdminService;
+
+    // ==== PROGRESS TRACKING ====
+    private volatile long progressTotal = 0;
+    private volatile long progressProcessed = 0;
+    private volatile long progressStartTime = 0;
+    private volatile String progressStatus = "idle";
+
+    public record ProgressInfo(
+            long processed,
+            long total,
+            double percent,
+            String etaHms,
+            String estimatedFinishTime,
+            String status
+    ) {}
+
+    private void startProgress(long total) {
+        this.progressTotal = total;
+        this.progressProcessed = 0;
+        this.progressStartTime = System.currentTimeMillis();
+        this.progressStatus = "running";
+    }
+
+    private void updateProgress() {
+        this.progressProcessed++;
+    }
+
+    private void finishProgress() {
+        this.progressStatus = "finished";
+    }
+
+    public ProgressInfo getProgress() {
+        long processed = this.progressProcessed;
+        long total = this.progressTotal;
+        long elapsed = (System.currentTimeMillis() - this.progressStartTime) / 1000;
+
+        double percent = 0.0;
+        if (processed > 0 && total > 0) {
+            percent = Math.round((processed * 100000.0 / total)) / 1000.0; // round to 0.001
+        }
+
+        long etaSeconds = 0;
+        if (processed > 0 && total > 0 && elapsed > 0) {
+            double rate = (double) processed / elapsed;
+            long remaining = total - processed;
+            etaSeconds = (long) (remaining / rate);
+        }
+
+        // format etaSeconds as HH:MM:SS
+        long hours = etaSeconds / 3600;
+        long minutes = (etaSeconds % 3600) / 60;
+        long seconds = etaSeconds % 60;
+        String etaHms = String.format("%02d:%02d:%02d", hours, minutes, seconds);
+
+        // calculate estimated finish timestamp
+        long finishEpochMs = System.currentTimeMillis() + (etaSeconds * 1000);
+        String estimatedFinish = Instant.ofEpochMilli(finishEpochMs)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime()
+                .toString();
+
+        return new ProgressInfo(
+                processed,
+                total,
+                percent,
+                etaHms,
+                estimatedFinish,
+                this.progressStatus
+        );
+    }
 
     /**
      * Код дефолтного vault, к которому будут привязываться новые ObjectType (vault уже существует в БД)
@@ -185,6 +256,15 @@ public class MFilesImportService {
         if (filesDir != null) {
             log.info("📁 Каталог файлов: {}", filesDir);
         }
+        // === PROGRESS: count lines and start progress ===
+        long totalLines = 0;
+        try {
+            totalLines = Files.lines(csvPath).count() - 1;
+        } catch (IOException e) {
+            log.warn("⚠️ Не удалось посчитать строки в CSV: {}", e.getMessage());
+        }
+        if (totalLines < 0) totalLines = 0;
+        startProgress(totalLines);
         try (
                 Reader reader = Files.newBufferedReader(csvPath, StandardCharsets.UTF_8);
                 CSVParser parser = CSVFormat.DEFAULT
@@ -218,6 +298,7 @@ public class MFilesImportService {
             );
             for (CSVRecord row : parser) {
                 stats.total++;
+                updateProgress();
                 importRow(row, headers, headerAlias, excluded, filesDir, vault, stats);
                 stats.success++;
             }
@@ -225,6 +306,7 @@ public class MFilesImportService {
             log.error("❌ Ошибка чтения/парсинга CSV: {}", e.getMessage(), e);
             stats.errors.add("Ошибка чтения/парсинга CSV: " + e.getMessage());
         }
+        finishProgress();
         log.info("✅ Импорт завершён: всего {}, успешно {}, ошибок {}, отсутствует файлов {}",
                 stats.total, stats.success, stats.failed, stats.missingFiles);
         return new ImportSummary(stats.total, stats.success, stats.failed, stats.missingFiles, stats.errors);
@@ -332,8 +414,13 @@ public class MFilesImportService {
         // Remove all bracketed parts: "(...)" including ID blocks and other brackets
         fileOnly = fileOnly.replaceAll("\\([^)]*\\)", "");
 
-        // Replace "{2}" with "/"
-        fileOnly = fileOnly.replace("{2}", "/");
+        // Special replacements for bracket codes
+        fileOnly = fileOnly.replace("{1}", "\\");  // backslash
+        fileOnly = fileOnly.replace("{2}", "/");   // slash
+        fileOnly = fileOnly.replace("{3}", ":");   // colon
+        fileOnly = fileOnly.replace("{4}", "*");   // asterisk
+        fileOnly = fileOnly.replace("{5}", "?");   // question mark
+        fileOnly = fileOnly.replace("{6}", "\"");  // double quote
 
         // Trim remaining whitespace
         fileOnly = fileOnly.trim();

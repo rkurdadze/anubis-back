@@ -47,4 +47,40 @@ public class MFilesImportController {
     }
 
     public record ImportRequest(String backupPath, Long vaultId) {}
+
+    public record ImportProgress(
+            long processed,
+            long total,
+            double percent,
+            String eta,
+            String estimatedFinish,
+            String status
+    ) {}
+
+    @GetMapping("/progress")
+    public ResponseEntity<ImportProgress> getProgress() {
+        try {
+            var p = importService.getProgress();
+            ImportProgress dto = new ImportProgress(
+                    p.processed(),
+                    p.total(),
+                    p.percent(),
+                    p.etaHms(),
+                    p.estimatedFinishTime(),
+                    p.status()
+            );
+            return ResponseEntity.ok(dto);
+        } catch (Exception e) {
+            log.error("❌ Ошибка получения прогресса: {}", e.getMessage());
+            return ResponseEntity.internalServerError()
+                    .body(new ImportProgress(
+                            0,
+                            0,
+                            0,
+                            "00:00:00",
+                            "unknown",
+                            "error: " + e.getMessage()
+                    ));
+        }
+    }
 }

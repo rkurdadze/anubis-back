@@ -54,8 +54,13 @@
      curl -f http://localhost:4101/healthz
    ```
 
-
-
+5. IMPORT:
+   ```bash
+   ( curl -X POST "http://localhost:4100/api/v1/import/mfiles" \
+    -H "Content-Type: application/json" \
+    -d '{"backupPath": "/Users/romankurdadze/Desktop/newbackup2910-original.CSV", "vaultId": 1}' \
+    > /dev/null 2>&1 & ) && watch -n 0.5 curl -s http://localhost:4100/api/v1/import/mfiles/progress
+   ```
 
 #
 #
