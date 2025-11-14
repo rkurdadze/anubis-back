@@ -659,16 +659,48 @@ public class MFilesImportService {
                 }
             }
 
-            // --- обработка файла
+            // --- обработка файла или папки
             String filePath = value(row, headerAlias, FILE_COL);
             if (filePath != null && !filePath.isBlank()) {
                 if (filesDir == null) {
                     stats.missingFiles++;
-                    log.warn("🚫 Папка '(Files)' отсутствует — пропущен файл: {}", filePath);
+                    log.warn("🚫 Папка '(Files)' отсутствует — пропущен путь: {}", filePath);
                     return;
                 }
+
                 Path normalized = normalizeFilePath(filesDir, filePath);
-                if (Files.exists(normalized)) {
+
+                // If path points to a directory → import all files inside it
+                if (Files.isDirectory(normalized)) {
+                    try {
+                        Files.list(normalized)
+                                .filter(Files::isRegularFile)
+                                .forEach(p -> {
+                                    try (InputStream is = Files.newInputStream(p)) {
+                                        MockMultipartFile multipart = new MockMultipartFile(
+                                                p.getFileName().toString(),
+                                                p.getFileName().toString(),
+                                                Files.probeContentType(p),
+                                                is
+                                        );
+                                        FileService.SaveOptions options = FileService.SaveOptions.builder()
+                                                .skipIndexing(true)
+                                                .targetVersionId(importVersion.getId())
+                                                .versionComment(importVersion.getComment())
+                                                .build();
+                                        fileService.saveFile(obj.getId(), multipart, options);
+                                    } catch (Exception e) {
+                                        stats.errors.add("Ошибка загрузки файла из папки: " + p + " — " + e.getMessage());
+                                        log.error("❌ Ошибка загрузки файла {}: {}", p, e.getMessage());
+                                    }
+                                });
+                    } catch (Exception e) {
+                        stats.errors.add("Не удалось прочитать папку: " + normalized + " — " + e.getMessage());
+                        log.error("❌ Не удалось прочитать папку {}: {}", normalized, e.getMessage());
+                    }
+                }
+                // Single file import
+                else if (Files.exists(normalized)) {
                     try (InputStream is = Files.newInputStream(normalized)) {
                         MockMultipartFile multipart = new MockMultipartFile(
                                 normalized.getFileName().toString(),
@@ -682,10 +714,13 @@ public class MFilesImportService {
                                 .versionComment(importVersion.getComment())
                                 .build();
                         fileService.saveFile(obj.getId(), multipart, options);
+                    } catch (Exception e) {
+                        stats.errors.add("Ошибка загрузки файла: " + normalized + " — " + e.getMessage());
+                        log.error("❌ Ошибка загрузки файла {}: {}", normalized, e.getMessage());
                     }
                 } else {
                     stats.missingFiles++;
-                    log.warn("🚫 Файл отсутствует: {}", normalized);
+                    log.warn("🚫 Путь отсутствует: {}", normalized);
                 }
             }
         } catch (Exception processingError) {
