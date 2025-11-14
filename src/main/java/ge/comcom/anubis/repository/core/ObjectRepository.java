@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -36,4 +37,13 @@ public interface ObjectRepository
             Long objectClassId,
             String name
     );
+
+
+    @Query("""
+       SELECT o.objectType.id, COUNT(o)
+       FROM ObjectEntity o
+       WHERE o.objectType IS NOT NULL
+       GROUP BY o.objectType.id
+       """)
+    List<Object[]> countByType();
 }

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -49,4 +50,13 @@ public interface ObjectVersionRepository extends JpaRepository<ObjectVersionEnti
        AND v.lockedAt < :cutoff
     """)
     int unlockOlderThan(Instant cutoff);
+
+
+    @Query("""
+        SELECT COUNT(v)
+        FROM ObjectVersionEntity v
+        WHERE v.versionNumber = 1
+          AND CAST(v.createdAt AS date) = :day
+""")
+    long countCreatedObjectsByDay(LocalDate day);
 }
