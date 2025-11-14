@@ -56,6 +56,43 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class MFilesImportService {
 
+    /**
+     * Ручные переопределения типов колонок (нормализованные имена)
+     */
+    private final Map<String, PropertyDataType> MANUAL_TYPE_OVERRIDES = Map.of(
+            "თარიღი", PropertyDataType.TEXT,
+            "ნომერი", PropertyDataType.TEXT,
+            "დამატებითი დოკუმენტების ნომრები", PropertyDataType.TEXT
+    );
+
+    /**
+     * Системные/служебные колонки, которые не должны импортироваться
+     */
+    private final Set<String> EXCLUDED_COLUMNS = Set.of(
+            normalizeHeader(FILE_COL),
+            normalizeHeader(OBJECT_TYPE_COL),
+            normalizeHeader(CLASS_COL),
+            normalizeHeader(DATE_CREATED),
+            normalizeHeader(DATE_MODIFIED),
+            normalizeHeader("Permissions"),
+            normalizeHeader("Version"),
+            normalizeHeader("ID"),
+            normalizeHeader("Name"),
+            normalizeHeader("Name or title"),
+            normalizeHeader("Last modified by"),
+            normalizeHeader("Created by"),
+            normalizeHeader("Class [id<:ver>]"),
+            normalizeHeader("Version label"),
+            normalizeHeader("Workflow state"),
+            normalizeHeader("Size on server (all versions)"),
+            normalizeHeader("Size on server (this version)"),
+            normalizeHeader("Moved into current state"),
+            normalizeHeader("Deleted by"),
+            normalizeHeader("Marked for archiving"),
+            normalizeHeader("Original path (1/3)"),
+            normalizeHeader("Original path (2/3)")
+    );
+
     private final ObjectTypeService objectTypeService;
     private final ClassService classService;
     private final PropertyDefService propertyDefService;
@@ -81,7 +118,8 @@ public class MFilesImportService {
             String etaHms,
             String estimatedFinishTime,
             String status
-    ) {}
+    ) {
+    }
 
     private void startProgress(long total) {
         this.progressTotal = total;
@@ -109,10 +147,10 @@ public class MFilesImportService {
         }
 
         long etaSeconds = 0;
-        if (processed > 0 && total > 0 && elapsed > 0) {
-            double rate = (double) processed / elapsed;
+        if (processed > 0 && elapsed > 0 && total > processed) {
             long remaining = total - processed;
-            etaSeconds = (long) (remaining / rate);
+            // ETA = elapsed_time_for_processed * (remaining / processed)
+            etaSeconds = (long) Math.round((double) elapsed * remaining / processed);
         }
 
         // format etaSeconds as HH:MM:SS
@@ -189,14 +227,6 @@ public class MFilesImportService {
 
     private static final Set<String> BOOLEAN_LITERALS = Set.of("yes", "no", "true", "false", "1", "0");
 
-    /**
-     * Ручные переопределения типов колонок (нормализованные имена)
-     */
-    private static final Map<String, PropertyDataType> MANUAL_TYPE_OVERRIDES = Map.of(
-            "თარიღი", PropertyDataType.TEXT,
-            "ნომერი", PropertyDataType.TEXT,
-            "დამატებითი დოკუმენტების ნომრები", PropertyDataType.TEXT
-    );
 
     /**
      * Колонка вида "Название [id<:ver>]"?
@@ -280,22 +310,7 @@ public class MFilesImportService {
                 headerAlias.put(norm, h);
             }
             // Исключаем служебные колонки (по нормализованным именам)
-            Set<String> excluded = Set.of(
-                    normalizeHeader(FILE_COL),
-                    normalizeHeader(OBJECT_TYPE_COL),
-                    normalizeHeader(CLASS_COL),
-                    normalizeHeader(DATE_CREATED),
-                    normalizeHeader(DATE_MODIFIED),
-                    // частые служебные поля M-Files, чтобы не создавать PropertyDef:
-                    normalizeHeader("Permissions"),
-                    normalizeHeader("Version"),
-                    normalizeHeader("ID"),
-                    normalizeHeader("Name"),
-                    normalizeHeader("Name or title"),
-                    normalizeHeader("Last modified by"),
-                    normalizeHeader("Created by"),
-                    normalizeHeader("Class [id<:ver>]")
-            );
+            Set<String> excluded = EXCLUDED_COLUMNS;
             for (CSVRecord row : parser) {
                 stats.total++;
                 updateProgress();
@@ -388,6 +403,14 @@ public class MFilesImportService {
         String objectTypeName = safe(row, headerAlias, OBJECT_TYPE_COL, "Document");
         String className = safe(row, headerAlias, CLASS_COL, "Default");
 
+        // Skip rows without valid numeric ID
+        String idRaw = value(row, headerAlias, "ID");
+        if (idRaw == null || !idRaw.trim().matches("\\d+")) {
+            log.warn("⏭️ Пропуск строки {} — колонка ID отсутствует или не является числом: '{}'",
+                    row.getRecordNumber(), idRaw);
+            return;
+        }
+
         // ObjectType с привязкой к Vault
         ObjectType objectType = upsertObjectTypeWithVault(objectTypeName, defaultVault);
         ObjectClass objectClass = classService.upsertByName(objectType, className);
@@ -425,28 +448,51 @@ public class MFilesImportService {
         // Trim remaining whitespace
         fileOnly = fileOnly.trim();
 
-        // Final object name
-        String objectName = fileOnly;
+        // Take object name from "Name" column
+        String nameFromCsv = value(row, headerAlias, "Name");
+        String objectName = (nameFromCsv != null && !nameFromCsv.isBlank()) ? nameFromCsv.trim() : fileOnly;
         if (objectName.isBlank()) {
             throw new RuntimeException("Derived object name is empty after normalization");
         }
 
-        Optional<ObjectEntity> existing = objectService.findByTypeClassAndName(
-                objectClass.getObjectType().getId(),
-                objectClass.getId(),
-                objectName
-        );
+        // Store parsed filename for later property set
+        String parsedFileName = fileOnly;
+
+        ObjectDto dto = new ObjectDto();
+        dto.setClassId(objectClass.getId());
+        dto.setTypeId(objectClass.getObjectType().getId());
+        dto.setName(objectName);
 
         ObjectEntity obj;
-        if (existing.isPresent()) {
-            obj = existing.get();
-            log.info("⚠️ Объект '{}' уже существует — обновление свойств", objectName);
-        } else {
-            ObjectDto dto = new ObjectDto();
-            dto.setClassId(objectClass.getId());
-            dto.setTypeId(objectClass.getObjectType().getId());
-            dto.setName(objectName);
+        try {
             obj = objectService.create(dto);
+        } catch (Exception e) {
+            stats.errors.add(String.format(
+                    "Row %d | Object creation failed | Name: '%s' | Error: %s | Exception: %s",
+                    row.getRecordNumber(),
+                    objectName,
+                    e.getMessage(),
+                    e.getClass().getSimpleName()
+            ));
+            throw e;
+        }
+        // Set "parsed_file" property
+        try {
+            PropertyDef parsedFileDef = propertyDefService.findOrCreateDynamic(
+                    objectClass,
+                    "normalized_file_or_folder",
+                    PropertyDataType.TEXT,
+                    false
+            );
+            objectService.setValue(obj, parsedFileDef, parsedFileName);
+        } catch (Exception e) {
+            stats.errors.add(String.format(
+                    "Row %d | Failed to set parsed_file | Value: '%s' | Error: %s",
+                    row.getRecordNumber(),
+                    parsedFileName,
+                    e.getMessage()
+            ));
+            log.error("❌ Failed to set parsed_file for row {}: {}", row.getRecordNumber(), parsedFileName, e);
         }
 
         Instant versionCreatedAt = parseDateToInstant(value(row, headerAlias, DATE_CREATED));
@@ -475,6 +521,32 @@ public class MFilesImportService {
                 boolean hasPair = hasIdVerPair(headers, colRaw);
                 boolean isMulti = looksLikeMulti(raw);
                 String cleanCol = colRaw != null && colRaw.startsWith("#") ? colRaw.substring(1).trim() : colRaw;
+
+                // Special handling: "Created from external location" is a hidden BOOLEAN (various representations)
+                if (cleanCol.equalsIgnoreCase("Created from external location")) {
+                    try {
+                        // Support Yes/No, true/false, 1/0 and empty as "false" (not set)
+                        boolean val = parseBoolean(raw);
+                        PropertyDef def = propertyDefService.findOrCreateDynamic(
+                                objectClass,
+                                "Created from external location",
+                                PropertyDataType.BOOLEAN,
+                                false
+                        );
+                        objectService.setValue(obj, def, val ? Boolean.TRUE : Boolean.FALSE);
+                    } catch (Exception e) {
+                        stats.errors.add(String.format(
+                                "Row %d | Column: %s | Value: '%s' | Error: %s | Exception: %s",
+                                row.getRecordNumber(),
+                                cleanCol,
+                                raw,
+                                e.getMessage(),
+                                e.getClass().getSimpleName()
+                        ));
+                        log.error("❌ Error processing 'Created from external location' on row {}: '{}'", row.getRecordNumber(), raw, e);
+                    }
+                    continue;
+                }
 
                 Set<String> SYSTEM_FIELDS = Set.of(
                         "Accessed by Me", "Modified by", "Created by", "Class", "Workflow",
@@ -506,11 +578,41 @@ public class MFilesImportService {
                 if (hasPair) {
                     def = ensureValueListProperty(def, isMulti);
                     if (isMulti) {
-                        List<Long> ids = ensureValueListItems(def, splitMulti(raw));
-                        objectService.setValueMulti(obj, def, ids);
+                        try {
+                            List<Long> ids = ensureValueListItems(def, splitMulti(raw));
+                            objectService.setValueMulti(obj, def, ids);
+                        } catch (Exception e) {
+                            stats.errors.add(String.format(
+                                    "Row %d | ValueList multi-binding failed | Column: %s | Value: '%s' | Error: %s | Exception: %s",
+                                    row.getRecordNumber(),
+                                    cleanCol,
+                                    raw,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            ));
+                            throw e;
+                        }
                     } else {
-                        Long id = ensureValueListItem(def, raw.trim());
-                        objectService.setValue(obj, def, id);
+                        try {
+                            Long id = null;
+                            try {
+                                id = ensureValueListItem(def, raw.trim());
+                                objectService.setValue(obj, def, id);
+                            } catch (Exception e) {
+                                stats.errors.add(String.format(
+                                        "Row %d | ValueListItem creation failed | Column: %s | Value: '%s' | Error: %s | Exception: %s",
+                                        row.getRecordNumber(),
+                                        cleanCol,
+                                        raw,
+                                        e.getMessage(),
+                                        e.getClass().getSimpleName()
+                                ));
+                                throw e;
+                            }
+                        } catch (Exception e) {
+                            // Already logged above, just rethrow
+                            throw e;
+                        }
                     }
                     continue;
                 }
@@ -522,8 +624,8 @@ public class MFilesImportService {
                         } catch (Exception e) {
                             throw new RuntimeException(
                                     "Error setting BOOLEAN value for column '" + cleanCol +
-                                    "'. Expected formats: yes/no/true/false/1/0. " +
-                                    "Actual value='" + raw + "'.", e);
+                                            "'. Expected formats: yes/no/true/false/1/0. " +
+                                            "Actual value='" + raw + "'.", e);
                         }
                     }
                     case DATE -> {
@@ -532,14 +634,14 @@ public class MFilesImportService {
                             if (dt == null) {
                                 throw new RuntimeException(
                                         "Error parsing DATE for column '" + cleanCol +
-                                        "'. Expected date formats such as YYYY-MM-DD, M/D/YYYY, etc. " +
-                                        "Actual value='" + raw + "'.");
+                                                "'. Expected date formats such as YYYY-MM-DD, M/D/YYYY, etc. " +
+                                                "Actual value='" + raw + "'.");
                             }
                             objectService.setValue(obj, def, dt.toLocalDate());
                         } catch (Exception e) {
                             throw new RuntimeException(
                                     "Error setting DATE value for column '" + cleanCol +
-                                    "'. Actual value='" + raw + "'.", e);
+                                            "'. Actual value='" + raw + "'.", e);
                         }
                     }
                     case NUMBER -> {
@@ -549,8 +651,8 @@ public class MFilesImportService {
                         } catch (Exception e) {
                             throw new RuntimeException(
                                     "Error setting NUMBER for column '" + cleanCol + "'. " +
-                                    "Expected numeric format (example: 123, 123.45). " +
-                                    "Actual value='" + raw + "'.", e);
+                                            "Expected numeric format (example: 123, 123.45). " +
+                                            "Actual value='" + raw + "'.", e);
                         }
                     }
                     default -> objectService.setValue(obj, def, raw);
@@ -591,10 +693,25 @@ public class MFilesImportService {
                 try {
                     objectVersionService.deleteVersion(importVersion.getId());
                 } catch (Exception cleanupError) {
+                    stats.errors.add(String.format(
+                            "Row %d | Version cleanup failed | VersionId: %d | Error: %s | Exception: %s",
+                            row.getRecordNumber(),
+                            importVersion.getId(),
+                            cleanupError.getMessage(),
+                            cleanupError.getClass().getSimpleName()
+                    ));
                     log.error("Не удалось удалить версию {} после ошибки импорта: {}", importVersion.getId(), cleanupError.getMessage());
                 }
             }
-            throw processingError;
+            stats.errors.add(String.format(
+                    "Row %d | Error: %s | Exception: %s",
+                    row.getRecordNumber(),
+                    processingError.getMessage(),
+                    processingError.getClass().getSimpleName()
+            ));
+            log.error("❌ Ошибка обработки строки {}: {}", row.getRecordNumber(), processingError.getMessage(), processingError);
+            stats.failed++;
+            return;
         }
     }
 
@@ -667,8 +784,14 @@ public class MFilesImportService {
         if (target == null || target.getId() == null) {
             throw new IllegalStateException("ValueList is not associated with property '" + synced.getName() + "'");
         }
-        ValueListItem item = valueListService.upsertItem(target.getId(), itemName);
-        return item.getId();
+        try {
+            ValueListItem item = valueListService.upsertItem(target.getId(), itemName);
+            return item.getId();
+        } catch (Exception e) {
+            throw new RuntimeException(
+                    "ValueListItem creation failed for ValueList '" + target.getName() +
+                            "', item '" + itemName + "': " + e.getMessage(), e);
+        }
     }
 
     private List<Long> ensureValueListItems(PropertyDef def, List<String> items) {
