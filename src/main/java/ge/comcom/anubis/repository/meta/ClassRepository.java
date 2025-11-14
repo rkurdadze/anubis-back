@@ -4,6 +4,7 @@ import ge.comcom.anubis.entity.core.ObjectClass;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -16,4 +17,6 @@ public interface ClassRepository extends JpaRepository<ObjectClass, Long> {
     boolean existsByObjectTypeIdAndNameIgnoreCaseAndIdNot(Long objectTypeId, String name, Long excludeId);
 
     Optional<ObjectClass> findByObjectTypeAndNameIgnoreCase(ge.comcom.anubis.entity.core.ObjectType objectType, String name);
+
+    List<ObjectClass> findAllByObjectTypeId(Long objectTypeId);
 }

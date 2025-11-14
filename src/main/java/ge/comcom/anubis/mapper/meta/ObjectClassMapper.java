@@ -16,6 +16,7 @@ public class ObjectClassMapper {
                 .id(entity.getId())
                 .objectTypeId(entity.getObjectType() != null ? entity.getObjectType().getId() : null)
                 .aclId(entity.getAcl() != null ? entity.getAcl().getId() : null)
+                .parentClassId(entity.getParent() != null ? entity.getParent().getId() : null)
                 .name(entity.getName())
                 .description(entity.getDescription())
                 .isActive(entity.getIsActive())

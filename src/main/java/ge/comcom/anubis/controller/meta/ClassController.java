@@ -2,6 +2,7 @@ package ge.comcom.anubis.controller.meta;
 
 import ge.comcom.anubis.dto.ClassDto;
 import ge.comcom.anubis.dto.ClassRequest;
+import ge.comcom.anubis.dto.ClassTreeNodeDto;
 import ge.comcom.anubis.service.meta.ClassService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -10,6 +11,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * REST controller for metadata class management.
@@ -41,6 +44,13 @@ public class ClassController {
         Sort.Direction dir = parts.length > 1 ? Sort.Direction.fromString(parts[1]) : Sort.Direction.ASC;
         Pageable pageable = PageRequest.of(page, Math.min(size, 200), Sort.by(dir, parts[0]));
         return classService.list(pageable);
+    }
+
+    @Operation(summary = "Получить иерархию классов",
+            description = "Возвращает дерево классов с учётом наследования. Можно фильтровать по ObjectType")
+    @GetMapping("/tree")
+    public List<ClassTreeNodeDto> tree(@RequestParam(value = "objectTypeId", required = false) Long objectTypeId) {
+        return classService.getHierarchy(objectTypeId);
     }
 
     @Operation(summary = "Get class by ID", description = "Fetches a single metadata class by its ID.")

@@ -2,6 +2,7 @@ package ge.comcom.anubis.controller.meta;
 
 import ge.comcom.anubis.dto.ClassPropertyDto;
 import ge.comcom.anubis.dto.ClassPropertyRequest;
+import ge.comcom.anubis.dto.EffectiveClassPropertyDto;
 import ge.comcom.anubis.service.meta.ClassPropertyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,6 +30,13 @@ public class ClassPropertyController {
     @GetMapping("/by-class/{classId}")
     public List<ClassPropertyDto> listByClass(@PathVariable Long classId) {
         return service.listByClass(classId);
+    }
+
+    @Operation(summary = "Получить эффективные свойства класса",
+            description = "Возвращает свойства с учётом наследования и переопределений")
+    @GetMapping("/by-class/{classId}/effective")
+    public List<EffectiveClassPropertyDto> listEffectiveByClass(@PathVariable Long classId) {
+        return service.listEffectiveByClass(classId);
     }
 
     @Operation(summary = "Get binding by composite key")

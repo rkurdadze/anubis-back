@@ -21,6 +21,9 @@ public class ClassRequest {
     @Schema(description = "ACL ID linked with this class", example = "10")
     private Long aclId;
 
+    @Schema(description = "Parent class ID", example = "12")
+    private Long parentClassId;
+
     @NotBlank(message = "name is required")
     @Size(max = 255, message = "name must not exceed 255 characters")
     @Schema(description = "Class name", example = "Broadcast Station")

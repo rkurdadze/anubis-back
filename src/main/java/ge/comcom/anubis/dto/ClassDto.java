@@ -22,6 +22,9 @@ public class ClassDto {
     @Schema(description = "ACL ID if any", example = "15")
     private Long aclId;
 
+    @Schema(description = "Parent class identifier", example = "10")
+    private Long parentClassId;
+
     @Schema(description = "Name of the class", example = "Broadcast Station")
     private String name;
 
